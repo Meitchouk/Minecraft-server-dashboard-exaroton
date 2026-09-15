@@ -206,7 +206,7 @@ export function queryConsoleLines(id: string, commands: string[], settleMs = 150
       else if (msg.stream === "console" && msg.type === "line") {
         const line = String(msg.data).trimEnd();
         if (commands.some((c) => line === c || line.endsWith(`: ${c}`))) return;
-        lines.push(line.replace(/^[[^]]*] [[^]]*]: /, ""));
+        lines.push(line.replace(/^\[[^\]]*\] \[[^\]]*\]: /, ""));
       } else if (msg.type === "disconnected") finish(new ExarotonError(`Consola desconectada: ${msg.data}`, 502));
     });
   });
