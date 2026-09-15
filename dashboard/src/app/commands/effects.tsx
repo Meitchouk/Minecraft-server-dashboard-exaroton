@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { TargetPicker } from "@/components/target-picker";
 import { useCommands } from "@/components/command-runner";
-import type { Catalog } from "@/hooks/use-catalog";
+import { label, type Catalog } from "@/hooks/use-catalog";
 import { cn } from "@/lib/utils";
 
 const PRESETS = [
@@ -36,8 +36,8 @@ export function EffectsCommand({ catalog, loading, players }: { catalog: Catalog
   const effects = useMemo(() => {
     const all = catalog?.effects ?? [];
     const n = q.trim().toLowerCase();
-    return (n ? all.filter((e) => e.name.toLowerCase().includes(n) || e.displayName.toLowerCase().includes(n)) : all)
-      .sort((a, b) => (a.type === b.type ? a.displayName.localeCompare(b.displayName) : a.type === "good" ? -1 : 1));
+    return (n ? all.filter((e) => e.name.toLowerCase().includes(n) || e.displayName.toLowerCase().includes(n) || (e.es ?? "").toLowerCase().includes(n)) : all)
+      .sort((a, b) => (a.type === b.type ? label(a).localeCompare(label(b)) : a.type === "good" ? -1 : 1));
   }, [catalog, q]);
 
   const id = effect ? `minecraft:${effect.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase()}` : "";
@@ -62,7 +62,7 @@ export function EffectsCommand({ catalog, loading, players }: { catalog: Catalog
                   className={cn("flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-sm transition-colors hover:border-primary/40 hover:bg-primary/5",
                     effect === e.name && "border-primary bg-primary/10")}>
                   {e.type === "good" ? <Ghost className="size-4 text-primary" /> : <Skull className="size-4 text-destructive" />}
-                  <span className="truncate">{e.displayName}</span>
+                  <span className="min-w-0 flex-1"><span className="block truncate">{label(e)}</span>{e.es && <span className="block truncate text-[10px] text-muted-foreground">{e.displayName}</span>}</span>
                 </button>
               ))}
             </div>

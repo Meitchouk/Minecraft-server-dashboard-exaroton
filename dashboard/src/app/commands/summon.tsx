@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TargetPicker } from "@/components/target-picker";
 import { useCommands } from "@/components/command-runner";
-import type { Catalog } from "@/hooks/use-catalog";
+import { label, type Catalog } from "@/hooks/use-catalog";
 import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = { mob: "Mob", animal: "Animal", hostile: "Hostil", water_creature: "Acuatico", ambient: "Ambiente" };
@@ -27,7 +27,7 @@ export function SummonCommand({ catalog, loading, players }: { catalog: Catalog 
   const entities = useMemo(() => {
     const all = catalog?.entities ?? [];
     const n = q.trim().toLowerCase();
-    return (n ? all.filter((e) => e.name.includes(n) || e.displayName.toLowerCase().includes(n)) : all).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    return (n ? all.filter((e) => e.name.includes(n) || e.displayName.toLowerCase().includes(n) || (e.es ?? "").toLowerCase().includes(n)) : all).sort((a, b) => label(a).localeCompare(label(b)));
   }, [catalog, q]);
 
   const nbt: string[] = [];
@@ -63,8 +63,8 @@ export function SummonCommand({ catalog, loading, players }: { catalog: Catalog 
                     entity === e.name && "border-primary bg-primary/10")}>
                   <span className={cn("size-2 shrink-0 rounded-full", e.type === "hostile" ? "bg-destructive" : e.type === "animal" ? "bg-primary" : "bg-chart-2")} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate">{e.displayName}</span>
-                    <span className="block truncate text-[10px] text-muted-foreground">{TYPE_LABEL[e.type] ?? e.type}</span>
+                    <span className="block truncate">{label(e)}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">{e.es ? `${e.displayName} · ` : ""}{TYPE_LABEL[e.type] ?? e.type}</span>
                   </span>
                 </button>
               ))}
