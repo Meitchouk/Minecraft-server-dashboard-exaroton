@@ -4,8 +4,8 @@ import { audit } from "@/lib/audit";
 
 export const POST = handle(async (req) => {
   const id = serverIdFrom(req);
-  requirePerm(req, "server.power");
   const { action, useOwnCredits } = await req.json();
+  requirePerm(req, action === "start" ? "server.start" : "server.stop");
   await audit({ serverId: id, kind: "action", command: String(action), source: userFrom(req).username });
   switch (action) {
     case "start": return api.start(id, Boolean(useOwnCredits));

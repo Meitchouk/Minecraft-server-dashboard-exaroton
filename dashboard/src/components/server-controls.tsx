@@ -16,8 +16,9 @@ type Action = "start" | "stop" | "restart";
 export function ServerControls({ status, onDone, size = "default" }: { status?: number; onDone?: () => void; size?: "sm" | "default" | "lg" }) {
   const [busy, setBusy] = useState<Action | null>(null);
   const perms = usePermissions();
-  const allowed = perms.can("server.power");
-  const online = status === 1 && allowed;
+  const canStart = perms.can("server.start");
+  const canStop = perms.can("server.stop");
+  const online = status === 1 && canStop;
   const offline = status === 0 || status === 7;
   const transitional = status !== undefined && !online && !offline;
 
@@ -38,11 +39,11 @@ export function ServerControls({ status, onDone, size = "default" }: { status?: 
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button size={size} onClick={() => run("start")} disabled={!allowed || !offline || busy !== null || transitional} className={allowed ? "glow-primary" : undefined} title={allowed ? undefined : perms.why("server.power")}>
+      <Button size={size} onClick={() => run("start")} disabled={!canStart || !offline || busy !== null || transitional} className={canStart ? "glow-primary" : undefined} title={canStart ? undefined : perms.why("server.start")}>
         {busy === "start" ? <Loader2 className="animate-spin" /> : <Play />}
         Iniciar
       </Button>
-      {perms.ready && !allowed && <AdminBadge />}
+      {perms.ready && !canStop && <AdminBadge />}
       <Confirm online={online} busy={busy} run={run} size={size} action="restart" label="Reiniciar" variant="outline" icon={<RotateCw />}
         desc="Los jugadores conectados seran desconectados mientras el servidor reinicia." />
       <Confirm online={online} busy={busy} run={run} size={size} action="stop" label="Detener" variant="destructive" icon={<Square />}

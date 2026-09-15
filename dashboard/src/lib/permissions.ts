@@ -3,13 +3,14 @@
 //  - admin:  todo.
 //  - user con SU propia API key: control total de sus servidores (es su cuenta), pero no administra el panel.
 //  - user aprobado con la key del ADMIN: operar (comandos normales, give, inventario, teleport, whitelist,
-//    ver config/archivos, copias) pero NO administrar (encender/apagar, RAM/MOTD, editar config/archivos,
+//    ver config/archivos, copias, ENCENDER el servidor) pero NO administrar (apagar/reiniciar, RAM/MOTD, editar config/archivos,
 //    OPs/bans, comandos peligrosos, ajustes de copias).
 
 export type Role = "admin" | "user";
 
 export type Perm =
-  | "server.power"       // iniciar / detener / reiniciar
+  | "server.start"       // iniciar (cualquier usuario aprobado: encender no hace dano)
+  | "server.stop"        // detener / reiniciar
   | "server.options"     // RAM y MOTD
   | "config.write"       // editar server.properties y otros configs
   | "files.write"        // subir, editar, borrar archivos
@@ -19,17 +20,18 @@ export type Perm =
   | "backup.settings"    // activar/desactivar copias, intervalo
   | "app.admin";         // aprobar usuarios, roles, auditoria
 
-const ALL: Perm[] = ["server.power", "server.options", "config.write", "files.write", "players.ops", "players.bans", "command.dangerous", "backup.settings", "app.admin"];
+const ALL: Perm[] = ["server.start", "server.stop", "server.options", "config.write", "files.write", "players.ops", "players.bans", "command.dangerous", "backup.settings", "app.admin"];
 const PANEL_ONLY: Perm[] = ["app.admin", "backup.settings"];
 
 export function permissionsFor(role: Role, ownKey: boolean): Set<Perm> {
   if (role === "admin") return new Set(ALL);
   if (ownKey) return new Set(ALL.filter((p) => !PANEL_ONLY.includes(p)));
-  return new Set(); // usuario normal con la key del admin: solo operar
+  return new Set<Perm>(["server.start"]); // usuario normal con la key del admin: operar y encender
 }
 
 export const PERM_LABEL: Record<Perm, string> = {
-  "server.power": "encender/apagar el servidor",
+  "server.start": "encender el servidor",
+  "server.stop": "apagar o reiniciar el servidor",
   "server.options": "cambiar RAM o MOTD",
   "config.write": "editar la configuracion",
   "files.write": "modificar archivos",
