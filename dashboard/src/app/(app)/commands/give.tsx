@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useCommands } from "@/components/command-runner";
 import { CATEGORY_META, GEAR_ENCHANTS, KITS, gearType, label, loadLS, saveLS, versionAtLeast, type Catalog, type CatalogItem, type ItemCategory } from "@/hooks/use-catalog";
+import { useStore } from "@/hooks/use-store";
 import { cn } from "@/lib/utils";
 
 const RECENT_KEY = "exaroton.give.recent";
-const CUSTOM_KEY = "exaroton.give.custom";
 const PAGE = 120;
 
 const CAT_ICON: Record<ItemCategory | "all", React.ElementType> = { all: LayoutGrid, weapon: Swords, armor: Shield, tool: Pickaxe, food: Apple, potion: FlaskRound, material: Gem, block: Boxes, egg: Egg, other: Shapes };
@@ -72,7 +72,8 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
   const [showAllEnch, setShowAllEnch] = useState(false);
   const [limit, setLimit] = useState(PAGE);
   const [recent, setRecent] = useState<string[]>(() => loadLS(RECENT_KEY, []));
-  const [custom, setCustom] = useState<string[]>(() => loadLS(CUSTOM_KEY, []));
+  const customStore = useStore<{ name: string }>("custom_items");
+  const custom = useMemo(() => customStore.items.map((c) => c.name), [customStore.items]);
   const [customInput, setCustomInput] = useState("");
   const [kitsUnlocked, setKitsUnlocked] = useState(false);
 
@@ -135,10 +136,12 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
   const addCustom = () => {
     const v = customInput.trim().toLowerCase();
     if (!v) return;
-    const c = [v, ...custom.filter((x) => x !== v)];
-    setCustom(c); saveLS(CUSTOM_KEY, c); setCustomInput("");
-    pick({ name: v, displayName: v, stackSize: 64, es: null, category: "other" });
-    toast.success(`Item personalizado agregado: ${v}`);
+    if (custom.includes(v)) { setCustomInput(""); pick({ name: v, displayName: v, stackSize: 64, es: null, category: "other" }); return; }
+    customStore.put({ id: v.replace(/[^A-Za-z0-9_.:-]/g, "_"), name: v }).then(() => {
+      setCustomInput("");
+      pick({ name: v, displayName: v, stackSize: 64, es: null, category: "other" });
+      toast.success(`Item personalizado agregado: ${v}`);
+    }).catch((e) => toast.error((e as Error).message));
   };
 
   return (

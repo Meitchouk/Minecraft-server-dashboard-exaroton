@@ -2,19 +2,14 @@
 import type { InvSlot } from "@/lib/snbt";
 import { loadLS, saveLS } from "@/hooks/use-catalog";
 
-// Historial de inventarios y papelera por jugador, guardados en el navegador.
-// Permite devolver objetos perdidos: cada objeto guarda su `spec` (id + componentes exactos) para regenerarlo con /give.
-
+// Historial local de lecturas de inventario (este navegador). La papelera y las copias automaticas viven en Firestore.
 export type Snapshot = { at: number; items: InvSlot[] };
 export type TrashEntry = { id: string; at: number; reason: string; item: InvSlot };
 
 const HIST = (p: string) => `exaroton.inv.history.${p.toLowerCase()}`;
-const TRASH = (p: string) => `exaroton.inv.trash.${p.toLowerCase()}`;
 const MAX_HIST = 30;
-const MAX_TRASH = 200;
 
 export const getHistory = (player: string) => loadLS<Snapshot[]>(HIST(player), []);
-export const getTrash = (player: string) => loadLS<TrashEntry[]>(TRASH(player), []);
 
 // Guarda una instantanea solo si cambio respecto a la anterior
 export function pushSnapshot(player: string, items: InvSlot[]) {
@@ -25,21 +20,6 @@ export function pushSnapshot(player: string, items: InvSlot[]) {
   saveLS(HIST(player), next);
   return next;
 }
-
-export function pushTrash(player: string, items: InvSlot[], reason: string) {
-  const t = getTrash(player);
-  const next = [...items.map((item) => ({ id: crypto.randomUUID(), at: Date.now(), reason, item })), ...t].slice(0, MAX_TRASH);
-  saveLS(TRASH(player), next);
-  return next;
-}
-
-export function removeTrash(player: string, ids: string[]) {
-  const next = getTrash(player).filter((e) => !ids.includes(e.id));
-  saveLS(TRASH(player), next);
-  return next;
-}
-
-export function clearTrash(player: string) { saveLS(TRASH(player), []); return [] as TrashEntry[]; }
 
 // Objetos que estaban en la instantanea y ya no estan en el inventario actual (por spec, contando unidades)
 export function missingFrom(snapshot: InvSlot[], current: InvSlot[]): InvSlot[] {

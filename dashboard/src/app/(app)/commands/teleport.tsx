@@ -9,13 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { TargetPicker } from "@/components/target-picker";
 import { useCommands } from "@/components/command-runner";
-import { loadLS, saveLS } from "@/hooks/use-catalog";
+import { useStore } from "@/hooks/use-store";
 import { apiFetch } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
 type Dim = "minecraft:overworld" | "minecraft:the_nether" | "minecraft:the_end";
-type Warp = { id: string; name: string; x: number; y: number; z: number; dim: Dim };
-const KEY = "exaroton.warps";
+type Warp = { name: string; x: number; y: number; z: number; dim: Dim };
 
 const DIMS: { id: Dim; label: string; icon: React.ElementType }[] = [
   { id: "minecraft:overworld", label: "Overworld", icon: Globe2 },
@@ -42,11 +41,11 @@ export function TeleportCommand({ players }: { players: string[] }) {
   const [dest, setDest] = useState(players[1] ?? players[0] ?? "");
   const [x, setX] = useState(""); const [y, setY] = useState(""); const [z, setZ] = useState("");
   const [dim, setDim] = useState<Dim>("minecraft:overworld");
-  const [warps, setWarps] = useState<Warp[]>(() => loadLS<Warp[]>(KEY, []));
+  const store = useStore<Warp>("warps");
+  const warps = store.items;
   const [warpName, setWarpName] = useState("");
   const [reading, setReading] = useState(false);
 
-  const persist = (w: Warp[]) => { setWarps(w); saveLS(KEY, w); };
   const num = (v: string) => (v.trim() === "" ? null : Number(v));
   const coordsOk = [x, y, z].every((v) => v.trim() !== "" && !isNaN(Number(v)));
   const coordCmd = coordsOk ? `execute in ${dim} run tp ${who.trim()} ${num(x)} ${num(y)} ${num(z)}` : "";
@@ -55,7 +54,7 @@ export function TeleportCommand({ players }: { players: string[] }) {
   const tpToCoords = () => coordCmd && run(coordCmd);
   const tpToPlayer = () => dest.trim() && run(`tp ${who.trim()} ${dest.trim()}`);
   const bringAll = () => dest.trim() && run(`tp @a ${dest.trim()}`);
-  const tpToWarp = (w: Warp, target = who) => run(`execute in ${w.dim} run tp ${target.trim()} ${w.x} ${w.y} ${w.z}`);
+  const tpToWarp = (w: { dim: Dim; x: number; y: number; z: number }, target = who) => run(`execute in ${w.dim} run tp ${target.trim()} ${w.x} ${w.y} ${w.z}`);
 
   const readInto = async () => {
     const p = who.trim();
@@ -69,10 +68,9 @@ export function TeleportCommand({ players }: { players: string[] }) {
     } finally { setReading(false); }
   };
 
-  const saveWarp = () => {
+  const saveWarp = async () => {
     if (!warpName.trim() || !coordsOk) return;
-    persist([...warps, { id: crypto.randomUUID(), name: warpName.trim(), x: Number(x), y: Number(y), z: Number(z), dim }]);
-    setWarpName(""); toast.success("Ubicacion guardada");
+    store.put({ name: warpName.trim(), x: Number(x), y: Number(y), z: Number(z), dim }).then(() => { setWarpName(""); toast.success("Ubicacion guardada"); }).catch((e) => toast.error((e as Error).message));
   };
 
   return (
@@ -138,7 +136,7 @@ export function TeleportCommand({ players }: { players: string[] }) {
       <Card className="lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><MapPin className="size-4 text-primary" />Ubicaciones guardadas</CardTitle>
-          <CardDescription>Warps rapidos para <b className="font-mono text-foreground">{who || "—"}</b>. Se guardan en este navegador.</CardDescription>
+          <CardDescription>Warps rapidos para <b className="font-mono text-foreground">{who || "—"}</b>. Compartidos por servidor (guardados en la base de datos).</CardDescription>
         </CardHeader>
         <CardContent>
           {warps.length === 0 ? (
@@ -158,7 +156,7 @@ export function TeleportCommand({ players }: { players: string[] }) {
                     </div>
                     <Button size="sm" onClick={() => tpToWarp(w)} disabled={busy || !who.trim()} title={`tp ${who} aqui`}><Navigation />Ir</Button>
                     <Button size="sm" variant="outline" onClick={() => tpToWarp(w, "@a")} disabled={busy} title="Traer a todos aqui"><Users /></Button>
-                    <Button size="icon-sm" variant="ghost" className="text-destructive opacity-50 group-hover:opacity-100" onClick={() => persist(warps.filter((x) => x.id !== w.id))}><Trash2 /></Button>
+                    <Button size="icon-sm" variant="ghost" className="text-destructive opacity-50 group-hover:opacity-100" onClick={() => store.remove(w.id).catch((e) => toast.error((e as Error).message))}><Trash2 /></Button>
                   </li>
                 );
               })}

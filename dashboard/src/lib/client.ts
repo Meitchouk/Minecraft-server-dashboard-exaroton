@@ -13,12 +13,23 @@ export function setServerId(id: string) {
   window.dispatchEvent(new Event("exaroton:server-changed"));
 }
 
+// API key propia del usuario: solo en sessionStorage (se borra al cerrar la pestaña); nunca se envia a ningun sitio salvo a nuestro /api
+const OWN_KEY = "exaroton.ownToken";
+export function getOwnToken(): string { try { return sessionStorage.getItem(OWN_KEY) ?? ""; } catch { return ""; } }
+export function setOwnToken(t: string) {
+  try { if (t) sessionStorage.setItem(OWN_KEY, t); else sessionStorage.removeItem(OWN_KEY); } catch {}
+  try { localStorage.removeItem(KEY); } catch {} // el servidor por defecto puede no existir con otra key
+  window.dispatchEvent(new Event("exaroton:server-changed"));
+}
+
 export class ApiError extends Error {}
 
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const sid = getServerId();
   if (sid) headers.set("x-server-id", sid);
+  const own = getOwnToken();
+  if (own) headers.set("x-exaroton-token", own);
   if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }

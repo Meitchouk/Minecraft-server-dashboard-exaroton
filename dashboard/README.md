@@ -18,6 +18,29 @@ Abre http://localhost:3000.
 |---|---|
 | `EXAROTON_TOKEN` | Token de API (https://exaroton.com/account/ → API). Tambien puede venir como variable de entorno del sistema. |
 | `EXAROTON_SERVER_ID` | Servidor por defecto. Se puede cambiar desde el selector del sidebar (se guarda en el navegador). |
+| `FIREBASE_SERVICE_ACCOUNT` | Ruta (o JSON) de la clave de cuenta de servicio de Firebase. |
+| `AUTH_SECRET` | Secreto (32+ caracteres) para firmar las sesiones. |
+| `SEED_ADMIN_USER` / `SEED_ADMIN_PASSWORD` | Admin inicial para `npm run seed`. |
+
+## Usuarios y acceso
+
+- Todo el panel exige sesion. Cualquiera puede **registrarse** (`/register`), pero solo entra cuando un **admin aprueba** la cuenta en `/admin`.
+- Usuarios en Firestore (`users/<username>`, contraseña con scrypt). Sesion en cookie httpOnly firmada (JWT, `AUTH_SECRET`).
+- Admin inicial: `npm run seed` (lee `SEED_ADMIN_USER` / `SEED_ADMIN_PASSWORD` de `.env.local`).
+- Cada usuario puede usar **su propia API key de Exaroton** desde Ajustes: se guarda solo en `sessionStorage` de esa pestaña,
+  viaja en la cabecera `x-exaroton-token` y el servidor la usa al vuelo sin almacenarla ni auditarla.
+
+## Datos en Firestore
+
+| Coleccion | Contenido |
+|---|---|
+| `users/<u>` (+ `favorites`) | cuentas, roles, aprobacion; favoritos por usuario |
+| `servers/<id>/players/<p>/snapshots` | copias automaticas de inventario + cofre de Ender |
+| `servers/<id>/trash` · `warps` · `custom_items` | papelera, ubicaciones e items de mod (compartidos por servidor) |
+| `servers/<id>/audit` (y `-` para eventos globales) | auditoria: quien ejecuto que |
+| `settings/backup` | ajustes de las copias automaticas |
+
+Si no hay clave de servicio, las copias y la auditoria caen a archivos en `data/` y el resto de colecciones no esta disponible.
 
 ## Secciones
 
@@ -29,7 +52,9 @@ Abre http://localhost:3000.
 | `/config` | `server.properties` como formulario agrupado (Juego, Acceso, Mundo, Rendimiento, Resource pack) con barra de cambios pendientes |
 | `/players` | Whitelist, OPs, baneados y IPs baneadas |
 | `/files` | Explorador con editor de texto, subir, crear carpeta, eliminar, descargar |
-| `/settings` | RAM (slider), MOTD con vista previa y colores §, datos del servidor y cuenta |
+| `/settings` | Mi API key (temporal por sesion), RAM (slider), MOTD con vista previa y colores §, datos del servidor y cuenta |
+| `/discipline` | Castigos y premios rapidos para un jugador |
+| `/admin` | (solo admin) aprobar/revocar usuarios, roles, contraseñas y auditoria |
 
 ## Catalogo de items
 

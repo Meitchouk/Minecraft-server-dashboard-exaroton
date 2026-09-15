@@ -20,7 +20,8 @@ import { parseInventory, type InvSlot } from "@/lib/snbt";
 import { buildGive, recommendedFor } from "./give";
 import { RecoveryCard } from "./recovery";
 import { BackupsCard } from "./backups";
-import { getTrash, giveCmd, pushSnapshot, pushTrash, removeTrash, clearTrash, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
+import { giveCmd, pushSnapshot, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
+import { useStore } from "@/hooks/use-store";
 import { cn } from "@/lib/utils";
 
 // Slots del inventario vanilla: 0-8 hotbar, 9-35 principal, 100-103 armadura (pies..cabeza), -106 mano secundaria
@@ -56,7 +57,9 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
   const [addAmount, setAddAmount] = useState(1);
   const [addEnch, setAddEnch] = useState(false);
   const [history, setHistory] = useState<Snapshot[]>([]);
-  const [trash, setTrash] = useState<TrashEntry[]>([]);
+  // Papelera compartida por servidor en Firestore (filtrada por jugador)
+  const trashStore = useStore<{ player: string; reason: string; item: InvSlot }>("trash");
+  const trash = useMemo<TrashEntry[]>(() => trashStore.items.filter((t) => t.player.toLowerCase() === loadedFor.toLowerCase()).map((t) => ({ id: t.id, at: t.at, reason: t.reason, item: t.item })), [trashStore.items, loadedFor]);
   const [serverSnaps, setServerSnaps] = useState<{ at: number; items: InvSlot[]; ender: InvSlot[] }[]>([]);
   const loadServerSnaps = (who: string) => apiFetch<{ snapshots: { at: number; items: InvSlot[]; ender: InvSlot[] }[] }>(`/api/backup/snapshots?player=${encodeURIComponent(who)}`).then((r) => setServerSnaps(r.snapshots ?? [])).catch(() => {});
   const loadRef = useRef<() => void>(() => {});
@@ -76,7 +79,7 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
       if (r) {
         setInv(r);
         setHistory(pushSnapshot(who, r));
-        if (who !== loadedFor) { setLoadedFor(who); setSel(new Set()); setTrash(getTrash(who)); loadServerSnaps(who); }
+        if (who !== loadedFor) { setLoadedFor(who); setSel(new Set()); loadServerSnaps(who); }
         else setSel((s) => new Set([...s].filter((slot) => r.some((x) => x.slot === slot)))); // conserva seleccion de slots que siguen ocupados
       } else if (!silent) toast.error("No se pudo leer el inventario", { description: "¿Esta el jugador conectado? Prueba de nuevo." });
     } finally { setReading(false); }
@@ -122,17 +125,17 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
       setInv(fresh); setSel(new Set());
       return toast.warning("El inventario cambio mientras tanto", { description: `${moved.map(nameOf).join(", ")} ya no esta donde estaba. Revisa la seleccion y vuelve a intentarlo.` });
     }
-    setTrash(pushTrash(loadedFor, wanted, "Quitado desde el panel"));
+    await Promise.all(wanted.map((item) => trashStore.put({ player: loadedFor, reason: "Quitado desde el panel", item })));
     await act(wanted.map((it) => `clear ${loadedFor} ${it.spec} ${it.count}`), `${wanted.length} objeto(s) quitado(s) → papelera`);
   };
   const duplicateSelected = () => act(selectedItems.map((it) => giveCmd(loadedFor, it)), `${selectedItems.length} objeto(s) duplicado(s)`);
-  const clearAll = () => {
-    if (inv?.length) setTrash(pushTrash(loadedFor, inv, "Vaciar todo"));
+  const clearAll = async () => {
+    if (inv?.length) await Promise.all(inv.map((item) => trashStore.put({ player: loadedFor, reason: "Vaciar todo", item })));
     return act([`clear ${loadedFor}`], "Inventario vaciado → papelera");
   };
   const restore = async (items: InvSlot[], trashIds?: string[]) => {
     await act(items.map((it) => giveCmd(loadedFor, it)), `${items.length} objeto(s) devuelto(s) a ${loadedFor}`);
-    if (trashIds?.length) setTrash(removeTrash(loadedFor, trashIds));
+    if (trashIds?.length) await trashStore.removeMany(trashIds);
   };
 
   const results = useMemo(() => {
@@ -272,7 +275,7 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
           </CardContent>
         </Card>
         <RecoveryCard player={loadedFor} current={inv} history={history} serverSnapshots={serverSnaps} trash={trash} nameOf={nameOf} busy={busy}
-          onRestore={restore} onDropTrash={(ids) => setTrash(removeTrash(loadedFor, ids))} onClearTrash={() => setTrash(clearTrash(loadedFor))} />
+          onRestore={restore} onDropTrash={(ids) => trashStore.removeMany(ids).catch((e) => toast.error((e as Error).message))} onClearTrash={() => trashStore.removeMany(trash.map((t) => t.id)).catch((e) => toast.error((e as Error).message))} />
         <BackupsCard onRan={() => loadedFor && loadServerSnaps(loadedFor)} />
       </div>
     </div>

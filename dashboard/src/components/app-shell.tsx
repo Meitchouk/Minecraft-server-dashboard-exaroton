@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import {
-  LayoutDashboard, TerminalSquare, Zap, Gavel, Settings2, Users, FolderTree, SlidersHorizontal, Server, ChevronDown, Check, Cpu, Menu,
+  LayoutDashboard, TerminalSquare, Zap, Gavel, Settings2, Users, FolderTree, SlidersHorizontal, Server, ChevronDown, Check, Cpu, Menu, ShieldCheck, LogOut, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { ServerControls } from "@/components/server-controls";
 import { usePoll, useServer, useServerId } from "@/hooks/use-server";
-import { apiFetch, setServerId, type ServerInfo } from "@/lib/client";
+import { apiFetch, setServerId, getOwnToken, setOwnToken, type ServerInfo } from "@/lib/client";
+import { useMe } from "@/hooks/use-me";
+import { useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const NAV = [
@@ -31,9 +34,11 @@ const NAV = [
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname();
+  const me = useMe();
+  const items = me?.role === "admin" ? [...NAV, { href: "/admin", label: "Administracion", icon: ShieldCheck }] : NAV;
   return (
     <nav className="flex flex-col gap-1">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = href === "/" ? path === "/" : path.startsWith(href);
         return (
           <Link key={href} href={href} onClick={onNavigate}
@@ -118,9 +123,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </Link>
       <ServerSwitcher />
       <NavLinks onNavigate={onNavigate} />
-      <div className="mt-auto rounded-lg border border-dashed p-3 text-[11px] leading-relaxed text-muted-foreground">
-        El token de API vive solo en el servidor de Next.js. El navegador nunca lo ve.
-      </div>
+      <UserBox />
     </div>
   );
 }
@@ -164,6 +167,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="grid-bg flex-1 px-4 py-6 md:px-8 md:py-8">
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
+      </div>
+    </div>
+  );
+}
+
+const subOwn = (cb: () => void) => { window.addEventListener("exaroton:server-changed", cb); return () => window.removeEventListener("exaroton:server-changed", cb); };
+
+function UserBox() {
+  const me = useMe();
+  const router = useRouter();
+  const own = useSyncExternalStore(subOwn, () => !!getOwnToken(), () => false);
+  const logout = async () => { await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {}); setOwnToken(""); router.replace("/login"); router.refresh(); };
+  return (
+    <div className="mt-auto space-y-2">
+      {own && (
+        <div className="flex items-start gap-2 rounded-lg border border-chart-3/40 bg-chart-3/10 p-2.5 text-[11px] leading-snug text-chart-3">
+          <KeyRound className="mt-0.5 size-3.5 shrink-0" />
+          <span>Usando <b>tu propia API key</b> (solo en esta pestaña). <button className="underline" onClick={() => setOwnToken("")}>Dejar de usarla</button></span>
+        </div>
+      )}
+      <div className="flex items-center gap-2 rounded-lg border p-2.5">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-semibold text-primary">{(me?.username ?? "?").slice(0, 1).toUpperCase()}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{me?.username ?? "…"}</span>
+          <span className="block text-[11px] text-muted-foreground">{me?.role === "admin" ? "administrador" : "usuario"}</span>
+        </span>
+        <Button size="icon-sm" variant="ghost" onClick={logout} title="Cerrar sesion"><LogOut /></Button>
       </div>
     </div>
   );

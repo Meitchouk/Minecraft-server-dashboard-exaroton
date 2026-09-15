@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/page-header";
+import { OwnKeyCard } from "@/components/own-key-card";
 import { useDraft, usePoll, useServer } from "@/hooks/use-server";
 import { apiFetch, motdToSpans } from "@/lib/client";
 
@@ -66,6 +67,8 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Ajustes" description="Recursos del servidor, mensaje de bienvenida y cuenta." />
+
+      <OwnKeyCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* RAM */}

@@ -25,6 +25,10 @@ g.__exaBackup ??= { status: { running: false, lastRun: null, lastResult: null, n
 const state = g.__exaBackup;
 
 export async function getSettings(): Promise<BackupSettings> {
+  const d = db();
+  if (d) {
+    try { const snap = await d.collection("settings").doc("backup").get(); return { ...DEFAULTS, ...(snap.data() ?? {}) }; } catch { /* cae a archivo */ }
+  }
   try { return { ...DEFAULTS, ...JSON.parse(await fs.readFile(SETTINGS_FILE, "utf8")) }; } catch { return { ...DEFAULTS }; }
 }
 
@@ -32,8 +36,9 @@ export async function saveSettings(s: Partial<BackupSettings>) {
   const next = { ...(await getSettings()), ...s };
   next.intervalMin = Math.max(1, Math.min(120, Number(next.intervalMin) || 5));
   next.keepDays = Math.max(1, Math.min(365, Number(next.keepDays) || 14));
-  await fs.mkdir(DATA, { recursive: true });
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2));
+  const d = db();
+  if (d) await d.collection("settings").doc("backup").set(next);
+  else { await fs.mkdir(DATA, { recursive: true }); await fs.writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2)); }
   schedule();
   return next;
 }

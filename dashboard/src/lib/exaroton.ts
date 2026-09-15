@@ -1,4 +1,5 @@
 import "server-only";
+import { overrideToken } from "@/lib/token-context";
 
 // Cliente para la API de Exaroton. Solo se ejecuta en el servidor: el token nunca llega al navegador.
 const BASE = "https://api.exaroton.com/v1";
@@ -15,7 +16,7 @@ export class ExarotonError extends Error {
 }
 
 function token() {
-  const t = process.env.EXAROTON_TOKEN;
+  const t = overrideToken() || process.env.EXAROTON_TOKEN;
   if (!t) throw new ExarotonError("Falta EXAROTON_TOKEN (variable de entorno o .env.local)", 500);
   return t;
 }
