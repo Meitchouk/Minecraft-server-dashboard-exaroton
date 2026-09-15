@@ -15,7 +15,7 @@ import path from "node:path";
 export type MessagesSettings = {
   welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
-  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean };
+  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean };
   rules: string;
 };
 
@@ -38,7 +38,7 @@ export const DEFAULT_MESSAGES: MessagesSettings = {
       "Consejo: /tpa <jugador> pide teletransportarte con alguien.",
     ],
   },
-  discord: { webhook: "", joins: true, deaths: true, chat: false, serverStatus: true },
+  discord: { webhook: "", joins: true, deaths: true, chat: false, serverStatus: true, mentionEveryone: true },
   rules: "1. Respeta a los demas jugadores.\n2. Nada de griefing ni robar (todo queda registrado).\n3. No uses hacks, x-ray ni exploits.\n4. No spam ni publicidad en el chat.\n5. Construye lejos del spawn y de las bases ajenas.\n6. Avisa a un admin si ves un problema.",
 };
 
@@ -144,11 +144,12 @@ export async function listPresence(serverId: string, since: number): Promise<{ e
 }
 
 // ---- Discord ----
-async function discord(text: string, kind: "joins" | "deaths" | "chat" | "serverStatus") {
+async function discord(text: string, kind: "joins" | "deaths" | "chat" | "serverStatus", mentionEveryone = false) {
   const s = await settings();
   if (!s.discord.webhook || !s.discord[kind]) return;
+  const mention = mentionEveryone && s.discord.mentionEveryone;
   try {
-    await fetch(s.discord.webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: text.slice(0, 1900), allowed_mentions: { parse: [] } }) });
+    await fetch(s.discord.webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: (mention ? "@everyone " : "") + text.slice(0, 1900), allowed_mentions: { parse: mention ? ["everyone"] : [] } }) });
   } catch { /* ignorar */ }
 }
 
@@ -243,7 +244,7 @@ function connect() {
         st.serverOnline = s.status === 1;
         if (st.serverOnline && s.players?.list) st.online = new Set(s.players.list);
         if (!st.serverOnline) st.online.clear();
-        if (wasOnline !== st.serverOnline) discord(st.serverOnline ? "✅ El servidor está en línea" : s.status === 7 ? "💥 El servidor se ha caído (crash)" : "⏹️ El servidor está apagado", "serverStatus").catch(() => {});
+        if (wasOnline !== st.serverOnline) discord(st.serverOnline ? "✅ El servidor está en línea, ¡a jugar!" : s.status === 7 ? "💥 El servidor se ha caído (crash)" : "⏹️ El servidor está apagado", "serverStatus", st.serverOnline).catch(() => {});
       }
     }
   });

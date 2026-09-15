@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 type Settings = {
   welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
-  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean };
+  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean };
   rules: string;
 };
 type Watcher = { connected: boolean; serverOnline: boolean; online: string[]; lastLine: number | null; events: number };
@@ -152,7 +152,7 @@ export default function MessagesPage() {
               <Input type="password" placeholder="https://discord.com/api/webhooks/…" value={d.discord.webhook} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, webhook: e.target.value } })} className="font-mono text-xs" />
               <Button variant="outline" disabled={!canEdit || !d.discord.webhook} onClick={() => apiFetch("/api/messages/preview", { method: "POST", body: JSON.stringify({ discord: d.discord.webhook }) }).then(() => toast.success("Mensaje de prueba enviado a Discord")).catch((e) => toast.error((e as Error).message))}>Probar</Button>
             </div>
-            {([["joins", "Entradas y salidas de jugadores"], ["deaths", "Muertes"], ["serverStatus", "Servidor encendido / apagado"], ["chat", "Todo el chat del juego"]] as const).map(([k, label]) => (
+            {([["joins", "Entradas y salidas de jugadores"], ["deaths", "Muertes"], ["serverStatus", "Servidor encendido / apagado"], ["mentionEveryone", "Mencionar a @everyone cuando el servidor se enciende"], ["chat", "Todo el chat del juego"]] as const).map(([k, label]) => (
               <div key={k} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="text-sm">{label}</span><Switch checked={d.discord[k]} disabled={!canEdit} onCheckedChange={(v) => set({ discord: { ...d.discord, [k]: v } })} /></div>
             ))}
             <p className="text-[11px] text-muted-foreground">Los avisos se envian cuando ocurre el evento (alguien entra, muere, el servidor arranca…); si el servidor esta apagado no hay nada que avisar. Es de una sola direccion (juego → Discord). Para que lo escrito en Discord aparezca en el juego haria falta un bot o un mod.</p>
