@@ -19,7 +19,7 @@ import { apiFetch } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
 type Settings = {
-  welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
+  welcome: { enabled: boolean; size: "large" | "medium" | "small"; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
   discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean; name: string; avatar: string; serverName: string; address: string; gifs: { join: string; leave: string; death: string; online: string; offline: string }; giphy: { apiKey: string; auto: boolean; rating: "g" | "pg" | "pg-13" | "r"; terms: { join: string; leave: string; death: string; online: string; offline: string } } };
   rules: string;
@@ -87,6 +87,17 @@ export default function MessagesPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="text-sm">Activada</span><Switch checked={d.welcome.enabled} disabled={!canEdit} onCheckedChange={(v) => set({ welcome: { ...d.welcome, enabled: v } })} /></div>
+            <div>
+              <Label className="mb-1.5 block text-xs">Tamano en pantalla</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([["large", "Grande", "Titulo enorme; solo para textos muy cortos"], ["medium", "Mediano", "Mitad de tamano, cabe mas texto"], ["small", "Pequeno", "Una linea sobre la barra de vida"]] as const).map(([v, l, d2]) => (
+                  <button key={v} type="button" disabled={!canEdit} onClick={() => set({ welcome: { ...d.welcome, size: v } })} className={`rounded-lg border px-3 py-2 text-left transition-colors ${(d.welcome.size ?? "medium") === v ? "border-primary bg-primary/10" : "hover:bg-muted/50"}`}>
+                    <p className="text-sm font-medium">{l}</p><p className="text-[11px] text-muted-foreground">{d2}</p>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">Si el titulo es largo se reduce solo para que no se salga de la pantalla.</p>
+            </div>
             <div><Label className="mb-1.5 block text-xs">Titulo</Label><Input value={d.welcome.title} readOnly={!canEdit} onChange={(e) => set({ welcome: { ...d.welcome, title: e.target.value } })} /></div>
             <div><Label className="mb-1.5 block text-xs">Subtitulo</Label><Input value={d.welcome.subtitle} readOnly={!canEdit} onChange={(e) => set({ welcome: { ...d.welcome, subtitle: e.target.value } })} /></div>
             <div><Label className="mb-1.5 block text-xs">Mensaje en el chat</Label><Textarea rows={2} value={d.welcome.chat} readOnly={!canEdit} onChange={(e) => set({ welcome: { ...d.welcome, chat: e.target.value } })} /></div>

@@ -13,7 +13,7 @@ import path from "node:path";
 // Corre dentro del proceso de Next (igual que las copias automaticas). Se reconecta solo.
 
 export type MessagesSettings = {
-  welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
+  welcome: { enabled: boolean; size: "large" | "medium" | "small"; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
   discord: {
     webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean;
@@ -27,6 +27,7 @@ export type MessagesSettings = {
 export const DEFAULT_MESSAGES: MessagesSettings = {
   welcome: {
     enabled: true,
+    size: "medium",
     title: "Bienvenido/a, {player}",
     subtitle: "Paraiso de los Degenerados",
     chat: "[Servidor] Usa /sethome para guardar tu casa, /tpa <jugador> para ir con alguien y /rules para ver las reglas.",
@@ -302,9 +303,7 @@ async function onLine(line: string) {
     await notifyJoin(player, first);
     const s = await settings();
     if (s.welcome.enabled) setTimeout(() => {
-      send(`title ${player} times 10 70 20`);
-      if (s.welcome.subtitle) send(`title ${player} subtitle {"text":"${esc(fill(s.welcome.subtitle, player))}","color":"gray"}`);
-      if (s.welcome.title) send(`title ${player} title {"text":"${esc(fill(s.welcome.title, player))}","color":"green","bold":true}`);
+      for (const c of welcomeCommands(s, player)) send(c);
       const chat = first && s.welcome.firstJoinChat ? s.welcome.firstJoinChat : s.welcome.chat;
       if (chat) send(`tellraw ${player} {"text":"${esc(fill(chat, player))}","color":"gray"}`);
     }, 2500);
@@ -416,12 +415,35 @@ export function watcherStatus() {
 // Ejecuta un comando a traves de la conexion del observador (util para pruebas desde el panel)
 export async function sendViaWatcher(cmd: string) { send(cmd); }
 
+// Comandos del titulo de bienvenida segun el tamano elegido.
+// El "title" de Minecraft se dibuja enorme y no se ajusta: un texto largo se sale de la pantalla.
+// - large: titulo grande + subtitulo (solo para textos cortos)
+// - medium: el titulo va en la linea de subtitulo (mitad de tamano) y el subtitulo en la barra de accion
+// - small: todo en la barra de accion, en una sola linea
+// Si el titulo es largo se baja automaticamente de tamano para que quepa.
+function welcomeCommands(s: MessagesSettings, player: string) {
+  const title = fill(s.welcome.title, player), sub = fill(s.welcome.subtitle, player);
+  let size = s.welcome.size ?? "medium";
+  if (size === "large" && title.length > 18) size = "medium";
+  if (size === "medium" && title.length > 40) size = "small";
+  const cmds = [`title ${player} times 10 70 20`];
+  if (size === "large") {
+    if (sub) cmds.push(`title ${player} subtitle {"text":"${esc(sub)}","color":"gray"}`);
+    if (title) cmds.push(`title ${player} title {"text":"${esc(title)}","color":"green","bold":true}`);
+  } else if (size === "medium") {
+    if (title) cmds.push(`title ${player} subtitle {"text":"${esc(title)}","color":"green","bold":true}`, `title ${player} title {"text":""}`);
+    if (sub) cmds.push(`title ${player} actionbar {"text":"${esc(sub)}","color":"gray"}`);
+  } else {
+    const line = [title, sub].filter(Boolean).join(" · ");
+    if (line) cmds.push(`title ${player} actionbar {"text":"${esc(line)}","color":"green"}`);
+  }
+  return cmds;
+}
+
 // Exportado para pruebas de bienvenida desde el panel
 export async function previewWelcome(player: string) {
   const s = await settings();
-  const cmds = [`title ${player} times 10 70 20`];
-  if (s.welcome.subtitle) cmds.push(`title ${player} subtitle {"text":"${esc(fill(s.welcome.subtitle, player))}","color":"gray"}`);
-  if (s.welcome.title) cmds.push(`title ${player} title {"text":"${esc(fill(s.welcome.title, player))}","color":"green","bold":true}`);
+  const cmds = welcomeCommands(s, player);
   if (s.welcome.chat) cmds.push(`tellraw ${player} {"text":"${esc(fill(s.welcome.chat, player))}","color":"gray"}`);
   await queryConsole(defaultServerId(), cmds, /$^/, 1500).catch(() => null);
 }
