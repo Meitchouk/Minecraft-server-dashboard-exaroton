@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import {
-  LayoutDashboard, TerminalSquare, Zap, Settings2, Users, FolderTree, SlidersHorizontal, Server, ChevronDown, Check, Cpu, Menu,
+  LayoutDashboard, TerminalSquare, Zap, Gavel, Settings2, Users, FolderTree, SlidersHorizontal, Server, ChevronDown, Check, Cpu, Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ const NAV = [
   { href: "/", label: "Resumen", icon: LayoutDashboard },
   { href: "/console", label: "Consola", icon: TerminalSquare },
   { href: "/commands", label: "Comandos", icon: Zap },
+  { href: "/discipline", label: "Castigos y premios", icon: Gavel },
   { href: "/config", label: "Configuracion", icon: Settings2 },
   { href: "/players", label: "Jugadores", icon: Users },
   { href: "/files", label: "Archivos", icon: FolderTree },
