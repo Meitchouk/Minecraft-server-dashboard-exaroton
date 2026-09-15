@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "node --experimental-strip-types scripts/seed.ts"
+    "seed": "node --experimental-strip-types scripts/seed.ts",
+    "sa:b64": "node scripts/sa-b64.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

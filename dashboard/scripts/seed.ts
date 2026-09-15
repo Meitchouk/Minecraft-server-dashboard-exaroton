@@ -20,8 +20,9 @@ async function main() {
   const user = (process.env.SEED_ADMIN_USER ?? "admin").trim().toLowerCase();
   const pass = process.env.SEED_ADMIN_PASSWORD ?? "";
   if (pass.length < 8) throw new Error("SEED_ADMIN_PASSWORD debe tener al menos 8 caracteres (definelo en .env.local)");
+  const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64 ?? "";
   const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT ?? "";
-  const sa = JSON.parse(saRaw.startsWith("{") ? saRaw : readFileSync(path.isAbsolute(saRaw) ? saRaw : path.join(process.cwd(), saRaw), "utf8"));
+  const sa = JSON.parse(b64 ? Buffer.from(b64, "base64").toString("utf8") : saRaw.startsWith("{") ? saRaw : readFileSync(path.isAbsolute(saRaw) ? saRaw : path.join(process.cwd(), saRaw), "utf8"));
   const app = initializeApp({ credential: cert(sa), projectId: sa.project_id });
   const db = getFirestore(app);
   db.settings({ ignoreUndefinedProperties: true });

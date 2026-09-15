@@ -18,9 +18,21 @@ Abre http://localhost:3000.
 |---|---|
 | `EXAROTON_TOKEN` | Token de API (https://exaroton.com/account/ → API). Tambien puede venir como variable de entorno del sistema. |
 | `EXAROTON_SERVER_ID` | Servidor por defecto. Se puede cambiar desde el selector del sidebar (se guarda en el navegador). |
-| `FIREBASE_SERVICE_ACCOUNT` | Ruta (o JSON) de la clave de cuenta de servicio de Firebase. |
+| `FIREBASE_SERVICE_ACCOUNT` | Clave de cuenta de servicio: ruta a un archivo (local) o el JSON completo. |
+| `FIREBASE_SERVICE_ACCOUNT_B64` | Alternativa para despliegues: el mismo JSON en base64 (`npm run sa:b64` lo genera). Tiene prioridad sobre la anterior. |
 | `AUTH_SECRET` | Secreto (32+ caracteres) para firmar las sesiones. |
 | `SEED_ADMIN_USER` / `SEED_ADMIN_PASSWORD` | Admin inicial para `npm run seed`. |
+
+## Despliegue
+
+1. Copia `.env.example` como referencia y define las variables en el hosting (Vercel, Railway, Docker, VPS…).
+2. La clave de Firebase **no se sube al repo**: genera el base64 en tu PC con `npm run sa:b64` y pegalo en
+   `FIREBASE_SERVICE_ACCOUNT_B64`. (Pegar el JSON tal cual en `FIREBASE_SERVICE_ACCOUNT` tambien funciona, pero
+   algunos paneles rompen los saltos de linea de `private_key`.)
+3. `AUTH_SECRET` nuevo y largo en produccion; `npm run seed` una vez para crear el admin (o crea usuarios desde /admin).
+4. Las copias automaticas corren dentro del proceso de Next (`instrumentation.ts`): en plataformas serverless
+   (Vercel) no hay proceso permanente, asi que ahi conviene un VPS/contenedor o un cron externo que llame a
+   `POST /api/backup/run` con una sesion de admin.
 
 ## Usuarios y acceso
 
