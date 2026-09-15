@@ -70,11 +70,12 @@ type State = {
   lastStatusNotice: { online: boolean; at: number } | null; // ultimo aviso enviado a Discord
   firstJoins: Set<string>;
   events: number;
+  debug: { msgs: number; lines: number; stale: number; readyState: number | null; connects: number };
 };
 
 type G = typeof globalThis & { __exaWatcher?: State };
 const g = globalThis as G;
-g.__exaWatcher ??= { ws: null, online: new Set(), connected: false, lastLine: null, autoIdx: 0, settings: null, settingsAt: 0, serverOnline: false, statusKnown: false, lastStatusNotice: null, firstJoins: new Set(), events: 0 };
+g.__exaWatcher ??= { ws: null, online: new Set(), connected: false, lastLine: null, autoIdx: 0, settings: null, settingsAt: 0, serverOnline: false, statusKnown: false, lastStatusNotice: null, firstJoins: new Set(), events: 0, debug: { msgs: 0, lines: 0, stale: 0, readyState: null, connects: 0 } };
 const st = g.__exaWatcher;
 
 const DATA = path.join(process.cwd(), "data");
@@ -292,8 +293,9 @@ async function onLine(line: string) {
   if (RE_DONE.test(line)) { applyStatus(true); await syncOnline(); return; }
   if (RE_STOP.test(line)) { applyStatus(false); return; }
   // muertes: linea de broadcast con un jugador conectado como primera palabra y sin ser chat/comando
-  const death = line.match(/^\[[^\]]*\] \[Server thread\/INFO\]: (\S+) (was|died|drowned|blew up|fell|hit the ground|went up in flames|burned|tried to swim|suffocated|starved|withered|froze|experienced|walked into|discovered|was killed|was slain|was shot|was fireballed|was pummeled|was impaled|was squashed|was struck|was poked|was stung|was skewered|was doomed|was obliterated|left the confines|didn.t want|was roasted|was frozen)/);
-  if (death && st.online.has(death[1])) await notifyDeath(death[1], line.replace(/^\[[^\]]*\] \[[^\]]*\]: /, ""));
+  // Styled Chat antepone "[☠] " al mensaje de muerte: se admite un prefijo entre corchetes opcional
+  const death = line.match(/^\[[^\]]*\] \[Server thread\/INFO\]: (?:\[[^\]]*\] )?(\S+) (was|died|drowned|blew up|fell|hit the ground|went up in flames|burned|tried to swim|suffocated|starved|withered|froze|experienced|walked into|discovered|was killed|was slain|was shot|was fireballed|was pummeled|was impaled|was squashed|was struck|was poked|was stung|was skewered|was doomed|was obliterated|left the confines|didn.t want|was roasted|was frozen)/);
+  if (death && st.online.has(death[1])) await notifyDeath(death[1], line.replace(/^\[[^\]]*\] \[[^\]]*\]: (?:\[[^\]]*\] )?/, ""));
 }
 
 async function hasPlayedBefore(player: string) {
@@ -349,14 +351,16 @@ function connect() {
   if (st.ws) { const old = st.ws; st.ws = null; old.removeAllListeners(); try { old.close(); } catch {} }
   const ws = new WebSocket(`wss://api.exaroton.com/v1/servers/${id}/websocket`, { headers: { Authorization: `Bearer ${tok}` } });
   st.ws = ws;
+  st.debug.connects++;
   const alive = () => st.ws === ws; // ignora eventos de sockets viejos
   ws.on("open", () => { if (alive()) st.connected = true; });
   ws.on("message", (raw) => {
-    if (!alive()) return;
+    st.debug.msgs++;
+    if (!alive()) { st.debug.stale++; return; }
     let msg: { type: string; stream?: string; data?: unknown };
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === "ready") { ws.send(JSON.stringify({ stream: "console", type: "start", data: { tail: 0 } })); syncOnline(); }
-    else if (msg.stream === "console" && msg.type === "line") onLine(String(msg.data).trimEnd()).catch(() => {});
+    else if (msg.stream === "console" && msg.type === "line") { st.debug.lines++; onLine(String(msg.data).trimEnd()).catch(() => {}); }
     else if (msg.type === "status") {
       const s = msg.data as { status?: number; players?: { list?: string[] } };
       if (typeof s?.status !== "number") return;
@@ -379,7 +383,7 @@ export async function startWatcher() {
 }
 
 export function watcherStatus() {
-  return { connected: st.connected, serverOnline: st.serverOnline, online: [...st.online], lastLine: st.lastLine, events: st.events, autoEnabled: !!st.settings?.auto.enabled };
+  return { connected: st.connected, serverOnline: st.serverOnline, online: [...st.online], lastLine: st.lastLine, events: st.events, autoEnabled: !!st.settings?.auto.enabled, debug: { ...st.debug, readyState: st.ws?.readyState ?? null } };
 }
 
 // Ejecuta un comando a traves de la conexion del observador (util para pruebas desde el panel)
