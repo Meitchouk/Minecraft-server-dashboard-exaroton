@@ -37,7 +37,15 @@ export function firebaseStatus() {
   return { configured: !!g.__exaFirebase.app, reason: g.__exaFirebase.reason, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? null };
 }
 
+type G2 = typeof globalThis & { __exaFirestore?: Firestore };
 export function db(): Firestore | null {
   firebaseStatus();
-  return g.__exaFirebase?.app ? getFirestore(g.__exaFirebase.app) : null;
+  if (!g.__exaFirebase?.app) return null;
+  const gg = globalThis as G2;
+  if (!gg.__exaFirestore) {
+    gg.__exaFirestore = getFirestore(g.__exaFirebase.app);
+    // los objetos del inventario llevan campos opcionales (name, etc.) en undefined
+    gg.__exaFirestore.settings({ ignoreUndefinedProperties: true });
+  }
+  return gg.__exaFirestore;
 }
