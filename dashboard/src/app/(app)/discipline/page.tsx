@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Gavel, Trophy, Skull, Flame, EyeOff, Snail, Frown, Utensils, ArrowUp, Lock, Ban, UserX, Eraser, ShieldMinus, Ghost, Mountain, Sparkles, Gem, Apple, Heart, Zap, PartyPopper, Megaphone, ShieldPlus, Coins, Rocket, ScrollText, AlertTriangle, Anchor } from "lucide-react";
+import { Gavel, Trophy, Skull, Flame, EyeOff, Snail, Frown, Utensils, ArrowUp, Lock, Ban, UserX, Eraser, ShieldMinus, Ghost, Mountain, Sparkles, Gem, Apple, Heart, Zap, PartyPopper, Megaphone, ShieldPlus, Coins, ScrollText, AlertTriangle, Anchor, Snowflake, Bird, Drama, Beef, Pickaxe, Wind, Crown, ArrowDownToLine, Volume2, Rabbit, Sun } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,8 @@ import { isDangerousCommand } from "@/lib/permissions";
 import { AdminBadge } from "@/components/admin-only";
 
 // {t} = objetivo, {m} = motivo/mensaje escrito por el admin
-type Action = { label: string; desc: string; icon: React.ElementType; cmds: string[]; danger?: boolean; confirm?: boolean; needsMsg?: boolean };
+type Tier = "leve" | "medio" | "grave" | "pequeno" | "especial";
+type Action = { label: string; desc: string; icon: React.ElementType; cmds: string[]; danger?: boolean; confirm?: boolean; needsMsg?: boolean; tier: Tier };
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 const tell = (t: string, text: string, color: string) => `tellraw ${t} {"text":"${esc(text)}","color":"${color}","bold":true}`;
@@ -29,41 +30,79 @@ const title = (t: string, text: string, color: string, sub?: string) => [
 ];
 
 const PUNISH: Action[] = [
-  { label: "Advertencia", desc: "Titulo rojo en pantalla + mensaje en chat con el motivo", icon: AlertTriangle, needsMsg: true, cmds: [...title("{t}", "ADVERTENCIA", "red", "{m}"), tell("{t}", "Advertencia del administrador: {m}", "red")] },
-  { label: "Rayo divino", desc: "Le cae un rayo encima (dano + fuego)", icon: Flame, cmds: ["execute at {t} run summon minecraft:lightning_bolt ~ ~ ~"] },
-  { label: "Envenenar", desc: "Veneno II durante 20 s", icon: Skull, cmds: ["effect give {t} minecraft:poison 20 1 true"] },
-  { label: "Ceguera", desc: "Ceguera + oscuridad 30 s", icon: EyeOff, cmds: ["effect give {t} minecraft:blindness 30 0 true", "effect give {t} minecraft:darkness 30 0 true"] },
-  { label: "Lentitud extrema", desc: "Lentitud V + fatiga de minero 60 s", icon: Snail, cmds: ["effect give {t} minecraft:slowness 60 4 true", "effect give {t} minecraft:mining_fatigue 60 2 true"] },
-  { label: "Nauseas", desc: "Mareo durante 30 s", icon: Frown, cmds: ["effect give {t} minecraft:nausea 30 0 true"] },
-  { label: "Hambre", desc: "Vacia la barra de comida", icon: Utensils, cmds: ["effect give {t} minecraft:hunger 30 9 true"] },
-  { label: "Lanzar al cielo", desc: "Levitacion 5 s y luego caida (con lentitud de caida para no matar)", icon: ArrowUp, cmds: ["effect give {t} minecraft:levitation 5 9 true", "effect give {t} minecraft:slow_falling 25 0 true"] },
-  { label: "Al vacio (con red)", desc: "Teletransporta 60 bloques arriba con caida lenta", icon: Mountain, cmds: ["execute as {t} at @s run tp @s ~ ~60 ~", "effect give {t} minecraft:slow_falling 30 0 true"] },
-  { label: "Modo espectador", desc: "No puede interactuar hasta que lo devuelvas", icon: Ghost, cmds: ["gamemode spectator {t}"] },
-  { label: "Modo aventura", desc: "No puede romper ni poner bloques", icon: Lock, cmds: ["gamemode adventure {t}"] },
-  { label: "Quitar OP", desc: "Retira permisos de operador", icon: ShieldMinus, cmds: ["deop {t}"] },
-  { label: "Vaciar inventario", desc: "Borra TODO lo que lleva", icon: Eraser, danger: true, confirm: true, cmds: ["clear {t}"] },
-  { label: "Matar", desc: "Muere al instante (pierde el inventario si keepInventory esta apagado)", icon: Skull, danger: true, confirm: true, cmds: ["kill {t}"] },
-  { label: "Expulsar", desc: "Kick con motivo", icon: UserX, danger: true, needsMsg: true, cmds: ["kick {t} {m}"] },
-  { label: "Banear", desc: "Ban permanente con motivo (se quita en Jugadores)", icon: Ban, danger: true, confirm: true, needsMsg: true, cmds: ["ban {t} {m}"] },
+  // ---- leves: molestan, no hacen daño real ----
+  { tier: "leve", label: "Advertencia", desc: "Titulo rojo en pantalla + mensaje en chat con el motivo", icon: AlertTriangle, needsMsg: true, cmds: [...title("{t}", "ADVERTENCIA", "red", "{m}"), tell("{t}", "Advertencia del administrador: {m}", "red")] },
+  { tier: "leve", label: "Advertencia publica", desc: "Todos ven en el chat que fue advertido y por que", icon: Volume2, needsMsg: true, cmds: [`tellraw @a [{"text":"⚠ ","color":"red"},{"text":"{t}","color":"yellow","bold":true},{"text":" ha sido advertido: {m}","color":"red"}]`] },
+  { tier: "leve", label: "Nauseas", desc: "Mareo durante 30 s", icon: Frown, cmds: ["effect give {t} minecraft:nausea 30 0 true"] },
+  { tier: "leve", label: "Ceguera", desc: "Ceguera + oscuridad 30 s", icon: EyeOff, cmds: ["effect give {t} minecraft:blindness 30 0 true", "effect give {t} minecraft:darkness 30 0 true"] },
+  { tier: "leve", label: "Sin saltar", desc: "No puede saltar durante 60 s", icon: ArrowDownToLine, cmds: ["effect give {t} minecraft:jump_boost 60 128 true"] },
+  { tier: "leve", label: "Lluvia de pollos", desc: "12 pollos le caen encima (inofensivo, ruidoso)", icon: Bird, cmds: Array.from({ length: 12 }, () => "execute at {t} run summon minecraft:chicken ~ ~6 ~") },
+  { tier: "leve", label: "Conejos", desc: "8 conejos alrededor para distraer", icon: Rabbit, cmds: Array.from({ length: 8 }, () => "execute at {t} run summon minecraft:rabbit ~ ~1 ~") },
+  { tier: "leve", label: "Lanzar al cielo", desc: "Levitacion 5 s y caida suave (no muere)", icon: ArrowUp, cmds: ["effect give {t} minecraft:levitation 5 9 true", "effect give {t} minecraft:slow_falling 25 0 true"] },
+  // ---- medios: castigan de verdad pero son reversibles ----
+  { tier: "medio", label: "Congelar 20 s", desc: "No puede moverse ni minar", icon: Snowflake, cmds: ["effect give {t} minecraft:slowness 20 255 true", "effect give {t} minecraft:mining_fatigue 20 255 true", "effect give {t} minecraft:jump_boost 20 128 true"] },
+  { tier: "medio", label: "Lentitud extrema", desc: "Lentitud V + fatiga de minero 60 s", icon: Snail, cmds: ["effect give {t} minecraft:slowness 60 4 true", "effect give {t} minecraft:mining_fatigue 60 2 true"] },
+  { tier: "medio", label: "Debilidad", desc: "Debilidad II + hambre durante 2 min", icon: Utensils, cmds: ["effect give {t} minecraft:weakness 120 1 true", "effect give {t} minecraft:hunger 120 2 true"] },
+  { tier: "medio", label: "Envenenar", desc: "Veneno II 20 s (no mata, deja en medio corazon)", icon: Skull, cmds: ["effect give {t} minecraft:poison 20 1 true"] },
+  { tier: "medio", label: "Rayo divino", desc: "Le cae un rayo encima (dano + fuego)", icon: Flame, cmds: ["execute at {t} run summon minecraft:lightning_bolt ~ ~ ~"] },
+  { tier: "medio", label: "Susto: zombis", desc: "4 zombis a su alrededor", icon: Drama, cmds: Array.from({ length: 4 }, () => "execute at {t} run summon minecraft:zombie ~ ~ ~"), confirm: true },
+  { tier: "medio", label: "Al vacio (con red)", desc: "60 bloques arriba con caida lenta", icon: Mountain, cmds: ["execute as {t} at @s run tp @s ~ ~60 ~", "effect give {t} minecraft:slow_falling 30 0 true"] },
+  { tier: "medio", label: "Quitar niveles", desc: "Pierde toda la experiencia", icon: Sparkles, confirm: true, cmds: ["xp set {t} 0 levels", "xp set {t} 0 points"] },
+  { tier: "medio", label: "Multa: 5 diamantes", desc: "Se le quitan hasta 5 diamantes del inventario", icon: Gem, confirm: true, cmds: ["clear {t} minecraft:diamond 5"] },
+  { tier: "medio", label: "Modo aventura", desc: "No puede romper ni poner bloques (revertir con 'Volver a supervivencia')", icon: Lock, cmds: ["gamemode adventure {t}"] },
+  { tier: "medio", label: "Modo espectador", desc: "No puede interactuar hasta que lo devuelvas", icon: Ghost, cmds: ["gamemode spectator {t}"] },
+  // ---- graves: irreversibles o de acceso ----
+  { tier: "grave", label: "Vaciar inventario", desc: "Borra TODO lo que lleva (queda copia en Inventario > papelera si se hace desde ahi)", icon: Eraser, danger: true, confirm: true, cmds: ["clear {t}"] },
+  { tier: "grave", label: "Matar", desc: "Muere al instante (pierde el inventario si keep_inventory esta apagado)", icon: Skull, danger: true, confirm: true, cmds: ["kill {t}"] },
+  { tier: "grave", label: "Quitar OP", desc: "Retira permisos de operador", icon: ShieldMinus, danger: true, cmds: ["deop {t}"] },
+  { tier: "grave", label: "Expulsar", desc: "Kick con motivo", icon: UserX, danger: true, needsMsg: true, cmds: ["kick {t} {m}"] },
+  { tier: "grave", label: "Banear", desc: "Ban permanente con motivo (se quita en Jugadores)", icon: Ban, danger: true, confirm: true, needsMsg: true, cmds: ["ban {t} {m}"] },
 ];
 
+// Premios moderados: nada que rompa la progresion de un survival
 const REWARD: Action[] = [
-  { label: "Felicitar", desc: "Titulo dorado + mensaje en chat con tu texto", icon: PartyPopper, needsMsg: true, cmds: [...title("{t}", "¡FELICIDADES!", "gold", "{m}"), tell("{t}", "{m}", "gold"), "execute at {t} run summon minecraft:firework_rocket ~ ~1 ~ {LifeTime:20,FireworkItem:{id:\"minecraft:firework_rocket\",count:1,components:{\"minecraft:fireworks\":{explosions:[{shape:\"large_ball\",colors:[I;16766720,16711680,65280],has_trail:true}],flight_duration:1}}}}"] },
-  { label: "Anunciar a todos", desc: "Anuncio publico: \"{jugador} ...\"", icon: Megaphone, needsMsg: true, cmds: [`tellraw @a [{"text":"★ ","color":"gold"},{"text":"{t}","color":"yellow","bold":true},{"text":" {m}","color":"gold"}]`] },
-  { label: "+10 niveles", desc: "Experiencia", icon: Sparkles, cmds: ["xp add {t} 10 levels"] },
-  { label: "+30 niveles", desc: "Experiencia", icon: Sparkles, cmds: ["xp add {t} 30 levels"] },
-  { label: "16 diamantes", desc: "give diamond 16", icon: Gem, cmds: ["give {t} minecraft:diamond 16"] },
-  { label: "4 lingotes de netherita", desc: "give netherite_ingot 4", icon: Gem, cmds: ["give {t} minecraft:netherite_ingot 4"] },
-  { label: "Manzanas doradas", desc: "8 manzanas doradas + 1 encantada", icon: Apple, cmds: ["give {t} minecraft:golden_apple 8", "give {t} minecraft:enchanted_golden_apple 1"] },
-  { label: "Totem de la inmortalidad", desc: "Un totem", icon: Heart, cmds: ["give {t} minecraft:totem_of_undying 1"] },
-  { label: "Elitros + cohetes", desc: "Elitros con Reparacion y 64 cohetes", icon: Rocket, cmds: ["give {t} minecraft:elytra[enchantments={\"minecraft:unbreaking\":3,\"minecraft:mending\":1}] 1", "give {t} minecraft:firework_rocket 64"] },
-  { label: "Buff heroico (10 min)", desc: "Fuerza II, Velocidad II, Resistencia, Regeneracion", icon: Zap, cmds: ["effect give {t} minecraft:strength 600 1 true", "effect give {t} minecraft:speed 600 1 true", "effect give {t} minecraft:resistance 600 0 true", "effect give {t} minecraft:regeneration 600 0 true"] },
-  { label: "Curar por completo", desc: "Vida, comida y sin efectos malos", icon: Heart, cmds: ["effect clear {t}", "effect give {t} minecraft:instant_health 1 10 true", "effect give {t} minecraft:saturation 1 10 true"] },
-  { label: "Libro encantado Reparacion", desc: "enchanted_book mending", icon: ScrollText, cmds: ["give {t} minecraft:enchanted_book[stored_enchantments={\"minecraft:mending\":1}] 1"] },
-  { label: "Esmeraldas", desc: "32 esmeraldas para comerciar", icon: Coins, cmds: ["give {t} minecraft:emerald 32"] },
-  { label: "Dar OP", desc: "Permisos de operador", icon: ShieldPlus, confirm: true, cmds: ["op {t}"] },
-  { label: "Volver a supervivencia", desc: "Quita espectador/aventura", icon: Anchor, cmds: ["gamemode survival {t}"] },
+  // ---- pequeños: reconocimiento y detalles ----
+  { tier: "pequeno", label: "Felicitar", desc: "Titulo dorado + mensaje privado + fuegos artificiales", icon: PartyPopper, needsMsg: true, cmds: [...title("{t}", "¡FELICIDADES!", "gold", "{m}"), tell("{t}", "{m}", "gold"), "execute at {t} run summon minecraft:firework_rocket ~ ~1 ~ {LifeTime:20,FireworkItem:{id:\"minecraft:firework_rocket\",count:1,components:{\"minecraft:fireworks\":{explosions:[{shape:\"large_ball\",colors:[I;16766720,16711680,65280],has_trail:true}],flight_duration:1}}}}"] },
+  { tier: "pequeno", label: "Anunciar a todos", desc: "Anuncio publico: \"★ {jugador} ...\"", icon: Megaphone, needsMsg: true, cmds: [`tellraw @a [{"text":"★ ","color":"gold"},{"text":"{t}","color":"yellow","bold":true},{"text":" {m}","color":"gold"}]`] },
+  { tier: "pequeno", label: "MVP del dia", desc: "Titulo para TODOS: '{jugador} es el MVP de hoy' + fuegos", icon: Crown, cmds: [`title @a times 10 80 20`, `title @a subtitle {"text":"{t}","color":"yellow","bold":true}`, `title @a title {"text":"MVP DE HOY","color":"gold","bold":true}`, "execute at {t} run summon minecraft:firework_rocket ~ ~1 ~ {LifeTime:25}", "execute at {t} run summon minecraft:firework_rocket ~2 ~1 ~ {LifeTime:30}", "execute at {t} run summon minecraft:firework_rocket ~-2 ~1 ~ {LifeTime:35}"] },
+  { tier: "pequeno", label: "Curar", desc: "Vida y comida al maximo, sin efectos malos", icon: Heart, cmds: ["effect clear {t}", "effect give {t} minecraft:instant_health 1 10 true", "effect give {t} minecraft:saturation 1 10 true"] },
+  { tier: "pequeno", label: "+5 niveles", desc: "Experiencia", icon: Sparkles, cmds: ["xp add {t} 5 levels"] },
+  { tier: "pequeno", label: "Comida", desc: "16 filetes cocinados + 8 panes", icon: Beef, cmds: ["give {t} minecraft:cooked_beef 16", "give {t} minecraft:bread 8"] },
+  { tier: "pequeno", label: "Frascos de XP", desc: "8 frascos de experiencia", icon: Sparkles, cmds: ["give {t} minecraft:experience_bottle 8"] },
+  { tier: "pequeno", label: "Flechas y antorchas", desc: "32 flechas + 32 antorchas", icon: Sun, cmds: ["give {t} minecraft:arrow 32", "give {t} minecraft:torch 32"] },
+  // ---- especiales: valen algo, pero se consiguen jugando en poco tiempo ----
+  { tier: "especial", label: "3 diamantes", desc: "give diamond 3", icon: Gem, cmds: ["give {t} minecraft:diamond 3"] },
+  { tier: "especial", label: "Lote de hierro", desc: "16 lingotes de hierro + 8 de oro", icon: Pickaxe, cmds: ["give {t} minecraft:iron_ingot 16", "give {t} minecraft:gold_ingot 8"] },
+  { tier: "especial", label: "16 esmeraldas", desc: "Para comerciar con aldeanos", icon: Coins, cmds: ["give {t} minecraft:emerald 16"] },
+  { tier: "especial", label: "Manzana dorada", desc: "1 manzana dorada (normal)", icon: Apple, cmds: ["give {t} minecraft:golden_apple 1"] },
+  { tier: "especial", label: "Pico de hierro encantado", desc: "Eficiencia II + Irrompibilidad I", icon: Pickaxe, cmds: ["give {t} minecraft:iron_pickaxe[enchantments={\"minecraft:efficiency\":2,\"minecraft:unbreaking\":1}] 1"] },
+  { tier: "especial", label: "Libro: Irrompibilidad I", desc: "Libro encantado modesto", icon: ScrollText, cmds: ["give {t} minecraft:enchanted_book[stored_enchantments={\"minecraft:unbreaking\":1}] 1"] },
+  { tier: "especial", label: "Caballo con silla", desc: "Invoca un caballo domesticado a su lado + una silla", icon: Wind, cmds: ["execute at {t} run summon minecraft:horse ~1 ~ ~1 {Tame:1b,Health:30f}", "give {t} minecraft:saddle 1"] },
+  { tier: "especial", label: "Buff de trabajo (5 min)", desc: "Prisa I + Velocidad I durante 5 min", icon: Zap, cmds: ["effect give {t} minecraft:haste 300 0 true", "effect give {t} minecraft:speed 300 0 true"] },
+  { tier: "especial", label: "Suerte (10 min)", desc: "Mejor botin al pescar y en cofres", icon: Zap, cmds: ["effect give {t} minecraft:luck 600 0 true"] },
+  // ---- administracion ----
+  { tier: "especial", label: "Dar OP", desc: "Permisos de operador", icon: ShieldPlus, confirm: true, cmds: ["op {t}"] },
+  { tier: "especial", label: "Volver a supervivencia", desc: "Quita espectador/aventura (revierte castigos)", icon: Anchor, cmds: ["gamemode survival {t}"] },
 ];
+
+const TIERS: Record<Tier, { label: string; desc: string }> = {
+  leve: { label: "Leves", desc: "Molestan sin hacer daño real" },
+  medio: { label: "Medios", desc: "Castigan de verdad, pero se revierten solos o con un clic" },
+  grave: { label: "Graves", desc: "Irreversibles o de acceso: piden confirmacion" },
+  pequeno: { label: "Pequeños", desc: "Reconocimiento y detalles que no alteran el juego" },
+  especial: { label: "Especiales", desc: "Valen algo, pero nada que no se consiga jugando un rato" },
+};
+
+function Group({ list, tier, target, msg, tone }: { list: Action[]; tier: Tier; target: string; msg: string; tone: "bad" | "good" }) {
+  const items = list.filter((a) => a.tier === tier);
+  if (!items.length) return null;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-2"><span className={cn("text-xs font-semibold uppercase tracking-wider", tone === "bad" ? "text-destructive" : "text-primary")}>{TIERS[tier].label}</span><span className="text-[11px] text-muted-foreground">{TIERS[tier].desc}</span></div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">{items.map((a) => <ActionButton key={a.label} a={a} target={target} msg={msg} tone={tone} />)}</div>
+    </div>
+  );
+}
 
 function ActionButton({ a, target, msg, tone }: { a: Action; target: string; msg: string; tone: "bad" | "good" }) {
   const { run, online, running } = useCommands();
@@ -137,19 +176,19 @@ function Board() {
         <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive"><Gavel className="size-4" />Castigos</CardTitle>
-            <CardDescription>Los marcados con &quot;confirmar&quot; piden confirmacion. Ninguno es irreversible salvo matar, vaciar y banear.</CardDescription>
+            <CardDescription>De menor a mayor. Los marcados con &quot;confirmar&quot; piden confirmacion; los graves son irreversibles.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-            {PUNISH.map((a) => <ActionButton key={a.label} a={a} target={target} msg={msg} tone="bad" />)}
+          <CardContent className="space-y-5">
+            {(["leve", "medio", "grave"] as Tier[]).map((t) => <Group key={t} list={PUNISH} tier={t} target={target} msg={msg} tone="bad" />)}
           </CardContent>
         </Card>
         <Card className="border-primary/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-primary"><Trophy className="size-4" />Premios</CardTitle>
-            <CardDescription>Recompensas, buffs y reconocimiento publico.</CardDescription>
+            <CardDescription>Recompensas moderadas: reconocimiento, comida, algo de recursos y buffs cortos. Nada que rompa el survival.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-            {REWARD.map((a) => <ActionButton key={a.label} a={a} target={target} msg={msg} tone="good" />)}
+          <CardContent className="space-y-5">
+            {(["pequeno", "especial"] as Tier[]).map((t) => <Group key={t} list={REWARD} tier={t} target={target} msg={msg} tone="good" />)}
           </CardContent>
         </Card>
       </div>
