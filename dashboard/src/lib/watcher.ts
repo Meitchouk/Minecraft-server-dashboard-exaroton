@@ -15,7 +15,11 @@ import path from "node:path";
 export type MessagesSettings = {
   welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
-  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean };
+  discord: {
+    webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean;
+    name: string; avatar: string; serverName: string; address: string;
+    gifs: { join: string; leave: string; death: string; online: string; offline: string };
+  };
   rules: string;
 };
 
@@ -38,7 +42,11 @@ export const DEFAULT_MESSAGES: MessagesSettings = {
       "Consejo: /tpa <jugador> pide teletransportarte con alguien.",
     ],
   },
-  discord: { webhook: "", joins: true, deaths: true, chat: false, serverStatus: true, mentionEveryone: true },
+  discord: {
+    webhook: "", joins: true, deaths: true, chat: false, serverStatus: true, mentionEveryone: true,
+    name: "Paraíso de los Degenerados", avatar: "https://mc-heads.net/head/MHF_Steve/128", serverName: "Paraíso de los Degenerados", address: "56ibarra89.exaroton.me",
+    gifs: { join: "", leave: "", death: "", online: "", offline: "" },
+  },
   rules: "1. Respeta a los demas jugadores.\n2. Nada de griefing ni robar (todo queda registrado).\n3. No uses hacks, x-ray ni exploits.\n4. No spam ni publicidad en el chat.\n5. Construye lejos del spawn y de las bases ajenas.\n6. Avisa a un admin si ves un problema.",
 };
 
@@ -143,14 +151,81 @@ export async function listPresence(serverId: string, since: number): Promise<{ e
   return { events: (await read<Presence>(`presence-${serverId}.jsonl`)).reverse(), samples: await read(`samples-${serverId}.jsonl`) };
 }
 
-// ---- Discord ----
-async function discord(text: string, kind: "joins" | "deaths" | "chat" | "serverStatus", mentionEveryone = false) {
+// ---- Discord (webhook con embeds) ----
+type Kind = "joins" | "deaths" | "chat" | "serverStatus";
+type Embed = { title?: string; description?: string; color?: number; thumbnail?: { url: string }; image?: { url: string }; fields?: { name: string; value: string; inline?: boolean }[]; footer?: { text: string; icon_url?: string }; author?: { name: string; icon_url?: string }; timestamp?: string };
+
+const C = { green: 0x5eff7a, red: 0xff5555, gray: 0x8a8f98, gold: 0xffc107, purple: 0xb388ff };
+const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+const avatar = (p: string) => `https://mc-heads.net/avatar/${encodeURIComponent(p)}/64`;
+const body = (p: string) => `https://mc-heads.net/body/${encodeURIComponent(p)}/120`;
+// Lineas con la tematica del servidor (aleatorias)
+const FLAVOR = {
+  join: ["Un degenerado más cruza las puertas del paraíso.", "El paraíso abre sus puertas a otra alma perdida.", "Que empiece la degeneración.", "Llegó a pecar, como todos.", "Bienvenido/a al único paraíso donde todo está permitido (menos el grief)."],
+  leave: ["Abandona el paraíso… por ahora.", "Se fue a hacer cosas de persona normal.", "El paraíso lo verá volver, siempre vuelven.", "Salió a tomar aire fresco."],
+  death: ["El paraíso reclama un alma.", "Nadie dijo que el paraíso fuera seguro.", "F en el chat.", "Un degenerado menos… hasta que reaparezca.", "La muerte también es parte de la experiencia."],
+  online: ["Las puertas del paraíso están abiertas.", "El paraíso despierta. ¿Quién se apunta?", "Servidor listo: a degenerar se ha dicho."],
+  offline: ["El paraíso cierra por hoy.", "Se apagan las luces del paraíso.", "Descanso obligatorio."],
+};
+
+async function post(payload: Record<string, unknown>) {
+  const s = await settings();
+  if (!s.discord.webhook) return;
+  try {
+    await fetch(s.discord.webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: s.discord.name || undefined, avatar_url: s.discord.avatar || undefined, allowed_mentions: { parse: [] }, ...payload }) });
+  } catch { /* ignorar */ }
+}
+
+async function discord(text: string, kind: Kind, mentionEveryone = false) {
   const s = await settings();
   if (!s.discord.webhook || !s.discord[kind]) return;
   const mention = mentionEveryone && s.discord.mentionEveryone;
-  try {
-    await fetch(s.discord.webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: (mention ? "@everyone " : "") + text.slice(0, 1900), allowed_mentions: { parse: mention ? ["everyone"] : [] } }) });
-  } catch { /* ignorar */ }
+  await post({ content: (mention ? "@everyone " : "") + text.slice(0, 1900), allowed_mentions: { parse: mention ? ["everyone"] : [] } });
+}
+
+async function discordEmbed(kind: Kind, embed: Embed, opts: { mention?: boolean; content?: string } = {}) {
+  const s = await settings();
+  if (!s.discord.webhook || !s.discord[kind]) return;
+  const mention = !!opts.mention && s.discord.mentionEveryone;
+  const footer = { text: s.discord.serverName || "Servidor", icon_url: s.discord.avatar || undefined };
+  await post({ content: (mention ? "@everyone " : "") + (opts.content ?? ""), allowed_mentions: { parse: mention ? ["everyone"] : [] }, embeds: [{ footer, timestamp: new Date().toISOString(), ...embed }] });
+}
+
+const gifOf = async (k: keyof MessagesSettings["discord"]["gifs"]) => { const s = await settings(); const g = s.discord.gifs[k]?.trim(); if (!g) return undefined; const list = g.split(/\s+/).filter(Boolean); return { url: pick(list) }; };
+
+export async function notifyJoin(player: string, first: boolean) {
+  await discordEmbed("joins", {
+    author: { name: `${player} entró al paraíso`, icon_url: avatar(player) },
+    description: first ? `🌟 **¡Primera vez aquí!** ${pick(FLAVOR.join)}` : pick(FLAVOR.join),
+    color: C.green, thumbnail: { url: body(player) },
+    fields: [{ name: "En línea ahora", value: `${st.online.size} · ${[...st.online].join(", ") || "—"}`, inline: false }],
+    image: await gifOf("join"),
+  });
+}
+export async function notifyLeave(player: string) {
+  await discordEmbed("joins", { author: { name: `${player} salió del paraíso`, icon_url: avatar(player) }, description: pick(FLAVOR.leave), color: C.gray, fields: [{ name: "Quedan", value: `${st.online.size} · ${[...st.online].join(", ") || "nadie"}` }], image: await gifOf("leave") });
+}
+export async function notifyDeath(player: string, message: string) {
+  await discordEmbed("deaths", { author: { name: "☠️ " + pick(FLAVOR.death), icon_url: avatar(player) }, title: message, color: C.red, thumbnail: { url: body(player) }, image: await gifOf("death") });
+}
+export async function notifyStatus(online: boolean, crashed = false) {
+  const s = await settings();
+  if (online) {
+    let info: { name?: string; software?: { name: string; version: string } | null; players?: { max: number } } = {};
+    try { info = await api.server(defaultServerId()); } catch { /* sin datos */ }
+    await discordEmbed("serverStatus", {
+      title: "🟢 " + pick(FLAVOR.online), color: C.green,
+      description: `Conéctate a **${s.discord.address || "—"}**`,
+      fields: [
+        { name: "Versión", value: info.software ? `${info.software.name} ${info.software.version}` : "—", inline: true },
+        { name: "Slots", value: String(info.players?.max ?? "—"), inline: true },
+        { name: "Extras", value: "/home · /tpa · Waystones · Kit inicial", inline: false },
+      ],
+      image: await gifOf("online"),
+    }, { mention: true });
+  } else {
+    await discordEmbed("serverStatus", { title: crashed ? "💥 El servidor se ha caído" : "⏹️ " + pick(FLAVOR.offline), color: crashed ? C.red : C.gray, description: crashed ? "Se reiniciará solo o lo levantará un admin." : "Cualquier jugador aprobado puede encenderlo desde el panel.", image: await gifOf("offline") });
+  }
 }
 
 // ---- Manejo de lineas ----
@@ -168,7 +243,7 @@ async function onLine(line: string) {
     const first = !st.online.has(player) && !(await hasPlayedBefore(player));
     st.online.add(player); st.events++;
     await recordPresence({ at: Date.now(), player, type: "join" });
-    await discord(`🟢 **${player}** entró al servidor (${st.online.size} en línea)`, "joins");
+    await notifyJoin(player, first);
     const s = await settings();
     if (s.welcome.enabled) setTimeout(() => {
       send(`title ${player} times 10 70 20`);
@@ -181,7 +256,7 @@ async function onLine(line: string) {
   }
   if ((m = line.match(RE_LEAVE))) {
     const player = m[1];
-    if (st.online.delete(player)) { st.events++; await recordPresence({ at: Date.now(), player, type: "leave" }); await discord(`🔴 **${player}** salió del servidor (${st.online.size} en línea)`, "joins"); }
+    if (st.online.delete(player)) { st.events++; await recordPresence({ at: Date.now(), player, type: "leave" }); await notifyLeave(player); }
     return;
   }
   if ((m = line.match(RE_CHAT))) { await discord(`**${m[1]}**: ${m[2]}`, "chat"); return; }
@@ -189,7 +264,7 @@ async function onLine(line: string) {
   if (RE_STOP.test(line)) { st.serverOnline = false; st.online.clear(); return; }
   // muertes: linea de broadcast con un jugador conectado como primera palabra y sin ser chat/comando
   const death = line.match(/^\[[^\]]*\] \[Server thread\/INFO\]: (\S+) (was|died|drowned|blew up|fell|hit the ground|went up in flames|burned|tried to swim|suffocated|starved|withered|froze|experienced|walked into|discovered|was killed|was slain|was shot|was fireballed|was pummeled|was impaled|was squashed|was struck|was poked|was stung|was skewered|was doomed|was obliterated|left the confines|didn.t want|was roasted|was frozen)/);
-  if (death && st.online.has(death[1])) await discord(`☠️ ${line.replace(/^\[[^\]]*\] \[[^\]]*\]: /, "")}`, "deaths");
+  if (death && st.online.has(death[1])) await notifyDeath(death[1], line.replace(/^\[[^\]]*\] \[[^\]]*\]: /, ""));
 }
 
 async function hasPlayedBefore(player: string) {
@@ -244,7 +319,7 @@ function connect() {
         st.serverOnline = s.status === 1;
         if (st.serverOnline && s.players?.list) st.online = new Set(s.players.list);
         if (!st.serverOnline) st.online.clear();
-        if (wasOnline !== st.serverOnline) discord(st.serverOnline ? "✅ El servidor está en línea, ¡a jugar!" : s.status === 7 ? "💥 El servidor se ha caído (crash)" : "⏹️ El servidor está apagado", "serverStatus", st.serverOnline).catch(() => {});
+        if (wasOnline !== st.serverOnline) notifyStatus(st.serverOnline, s.status === 7).catch(() => {});
       }
     }
   });
@@ -282,7 +357,8 @@ export async function previewWelcome(player: string) {
 export async function testDiscord(webhook?: string) {
   const url = webhook?.trim() || (await settings()).discord.webhook;
   if (!url) throw new Error("No hay webhook configurado");
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "✅ Prueba desde el panel de Exaroton: el webhook funciona. Recibirás aquí los avisos activados." }) });
+  const s = await settings();
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: s.discord.name || undefined, avatar_url: s.discord.avatar || undefined, embeds: [{ title: "✅ Webhook conectado", description: pick(FLAVOR.online) + "\nAsí se verán los avisos: tarjetas con la skin del jugador, color por evento y GIF si lo configuras.", color: C.green, thumbnail: { url: body("Meitchouk") }, footer: { text: s.discord.serverName || "Servidor", icon_url: s.discord.avatar || undefined }, timestamp: new Date().toISOString(), image: await gifOf("online") }] }) });
   if (!r.ok) throw new Error(`Discord respondió ${r.status}`);
   return true;
 }

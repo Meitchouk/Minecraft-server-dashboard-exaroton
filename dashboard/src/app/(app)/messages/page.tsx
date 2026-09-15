@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 type Settings = {
   welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
-  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean };
+  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean; name: string; avatar: string; serverName: string; address: string; gifs: { join: string; leave: string; death: string; online: string; offline: string } };
   rules: string;
 };
 type Watcher = { connected: boolean; serverOnline: boolean; online: string[]; lastLine: number | null; events: number };
@@ -145,7 +145,7 @@ export default function MessagesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Webhook className="size-4 text-primary" />Discord (webhook)</CardTitle>
-            <CardDescription>Avisos del servidor a un canal de Discord, sin mods ni bot. En el canal: Editar canal → Integraciones → Webhooks → Nuevo webhook → copiar URL.</CardDescription>
+            <CardDescription>Tarjetas con la skin del jugador, color por evento, GIF opcional y mencion a @everyone al encender. Sin mods ni bot. En el canal: Editar canal → Integraciones → Webhooks → Nuevo webhook → copiar URL.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
@@ -155,6 +155,21 @@ export default function MessagesPage() {
             {([["joins", "Entradas y salidas de jugadores"], ["deaths", "Muertes"], ["serverStatus", "Servidor encendido / apagado"], ["mentionEveryone", "Mencionar a @everyone cuando el servidor se enciende"], ["chat", "Todo el chat del juego"]] as const).map(([k, label]) => (
               <div key={k} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="text-sm">{label}</span><Switch checked={d.discord[k]} disabled={!canEdit} onCheckedChange={(v) => set({ discord: { ...d.discord, [k]: v } })} /></div>
             ))}
+            <details className="rounded-lg border p-3 text-sm">
+              <summary className="cursor-pointer font-medium">Apariencia y GIFs</summary>
+              <div className="mt-3 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div><Label className="mb-1.5 block text-xs">Nombre del bot</Label><Input value={d.discord.name} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, name: e.target.value } })} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Avatar del bot (URL de imagen)</Label><Input value={d.discord.avatar} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, avatar: e.target.value } })} className="font-mono text-xs" /></div>
+                  <div><Label className="mb-1.5 block text-xs">Nombre del servidor (pie de las tarjetas)</Label><Input value={d.discord.serverName} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, serverName: e.target.value } })} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Direccion que se muestra al encender</Label><Input value={d.discord.address} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, address: e.target.value } })} className="font-mono text-xs" /></div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">GIFs por evento: pega una o varias URLs directas (una por linea; se elige una al azar). En Giphy: abrir el GIF → &quot;Copiar enlace&quot; → usar el que termina en <code className="rounded bg-muted px-1">/giphy.gif</code>. En Tenor: clic derecho sobre el GIF → &quot;Copiar direccion de imagen&quot;.</p>
+                {([["online", "Servidor encendido"], ["join", "Entra un jugador"], ["leave", "Sale un jugador"], ["death", "Muerte"], ["offline", "Servidor apagado"]] as const).map(([k, l]) => (
+                  <div key={k}><Label className="mb-1.5 block text-xs">{l}</Label><Textarea rows={1} value={d.discord.gifs[k]} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, gifs: { ...d.discord.gifs, [k]: e.target.value } } })} className="font-mono text-xs" placeholder="https://media.giphy.com/media/…/giphy.gif" /></div>
+                ))}
+              </div>
+            </details>
             <p className="text-[11px] text-muted-foreground">Los avisos se envian cuando ocurre el evento (alguien entra, muere, el servidor arranca…); si el servidor esta apagado no hay nada que avisar. Es de una sola direccion (juego → Discord). Para que lo escrito en Discord aparezca en el juego haria falta un bot o un mod.</p>
           </CardContent>
         </Card>
