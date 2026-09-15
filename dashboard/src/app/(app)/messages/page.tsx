@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { GifPicker } from "@/components/gif-picker";
 import { MessageSquareHeart, Megaphone, ScrollText, Save, Play, Plus, Trash2, Radio, Loader2, Eye, Webhook } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,7 @@ import { cn } from "@/lib/utils";
 type Settings = {
   welcome: { enabled: boolean; title: string; subtitle: string; chat: string; firstJoinChat: string };
   auto: { enabled: boolean; intervalMin: number; messages: string[] };
-  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean; name: string; avatar: string; serverName: string; address: string; gifs: { join: string; leave: string; death: string; online: string; offline: string } };
+  discord: { webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean; name: string; avatar: string; serverName: string; address: string; gifs: { join: string; leave: string; death: string; online: string; offline: string }; giphy: { apiKey: string; auto: boolean; rating: "g" | "pg" | "pg-13" | "r"; terms: { join: string; leave: string; death: string; online: string; offline: string } } };
   rules: string;
 };
 type Watcher = { connected: boolean; serverOnline: boolean; online: string[]; lastLine: number | null; events: number };
@@ -164,9 +165,31 @@ export default function MessagesPage() {
                   <div><Label className="mb-1.5 block text-xs">Nombre del servidor (pie de las tarjetas)</Label><Input value={d.discord.serverName} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, serverName: e.target.value } })} /></div>
                   <div><Label className="mb-1.5 block text-xs">Direccion que se muestra al encender</Label><Input value={d.discord.address} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, address: e.target.value } })} className="font-mono text-xs" /></div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">GIFs por evento: pega una o varias URLs directas (una por linea; se elige una al azar). En Giphy: abrir el GIF → &quot;Copiar enlace&quot; → usar el que termina en <code className="rounded bg-muted px-1">/giphy.gif</code>. En Tenor: clic derecho sobre el GIF → &quot;Copiar direccion de imagen&quot;.</p>
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-medium">GIFs automaticos con Giphy</p>
+                  <p className="text-[11px] text-muted-foreground">Con una API key gratuita de Giphy (developers.giphy.com → Create an App → API) el panel elige un GIF al azar por tema en cada evento, y puedes buscar GIFs aqui mismo para fijarlos.</p>
+                  <div className="flex gap-2">
+                    <Input type="password" placeholder="API key de Giphy" value={d.discord.giphy.apiKey} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, giphy: { ...d.discord.giphy, apiKey: e.target.value } } })} className="font-mono text-xs" />
+                    <select value={d.discord.giphy.rating} disabled={!canEdit} onChange={(e) => set({ discord: { ...d.discord, giphy: { ...d.discord.giphy, rating: e.target.value as Settings["discord"]["giphy"]["rating"] } } })} className="rounded-lg border bg-transparent px-2 text-xs">
+                      {["g", "pg", "pg-13", "r"].map((r) => <option key={r} value={r}>{r.toUpperCase()}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="text-sm">GIF aleatorio por tema cuando no hay URL fija</span><Switch checked={d.discord.giphy.auto} disabled={!canEdit} onCheckedChange={(v) => set({ discord: { ...d.discord, giphy: { ...d.discord.giphy, auto: v } } })} /></div>
+                </div>
                 {([["online", "Servidor encendido"], ["join", "Entra un jugador"], ["leave", "Sale un jugador"], ["death", "Muerte"], ["offline", "Servidor apagado"]] as const).map(([k, l]) => (
-                  <div key={k}><Label className="mb-1.5 block text-xs">{l}</Label><Textarea rows={1} value={d.discord.gifs[k]} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, gifs: { ...d.discord.gifs, [k]: e.target.value } } })} className="font-mono text-xs" placeholder="https://media.giphy.com/media/…/giphy.gif" /></div>
+                  <div key={k} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="mb-1.5 block text-xs">{l} · tema para el GIF aleatorio</Label>
+                      <Input value={d.discord.giphy.terms[k]} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, giphy: { ...d.discord.giphy, terms: { ...d.discord.giphy.terms, [k]: e.target.value } } } })} placeholder="ej. minecraft welcome" />
+                    </div>
+                    <div>
+                      <Label className="mb-1.5 block text-xs">GIF fijo (URLs, una por linea; tiene prioridad)</Label>
+                      <div className="flex gap-2">
+                        <Textarea rows={1} value={d.discord.gifs[k]} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, gifs: { ...d.discord.gifs, [k]: e.target.value } } })} className="font-mono text-xs" placeholder="https://media.giphy.com/media/…/giphy.gif" />
+                        {canEdit && <GifPicker apiKey={d.discord.giphy.apiKey} initialQuery={d.discord.giphy.terms[k]} onPick={(url) => set({ discord: { ...d.discord, gifs: { ...d.discord.gifs, [k]: (d.discord.gifs[k] ? d.discord.gifs[k].trim() + "\n" : "") + url } } })} />}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </details>

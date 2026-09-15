@@ -19,6 +19,7 @@ export type MessagesSettings = {
     webhook: string; joins: boolean; deaths: boolean; chat: boolean; serverStatus: boolean; mentionEveryone: boolean;
     name: string; avatar: string; serverName: string; address: string;
     gifs: { join: string; leave: string; death: string; online: string; offline: string };
+    giphy: { apiKey: string; auto: boolean; rating: "g" | "pg" | "pg-13" | "r"; terms: { join: string; leave: string; death: string; online: string; offline: string } };
   };
   rules: string;
 };
@@ -46,6 +47,7 @@ export const DEFAULT_MESSAGES: MessagesSettings = {
     webhook: "", joins: true, deaths: true, chat: false, serverStatus: true, mentionEveryone: true,
     name: "Paraíso de los Degenerados", avatar: "https://mc-heads.net/head/MHF_Steve/128", serverName: "Paraíso de los Degenerados", address: "56ibarra89.exaroton.me",
     gifs: { join: "", leave: "", death: "", online: "", offline: "" },
+    giphy: { apiKey: "", auto: true, rating: "pg-13", terms: { join: "minecraft welcome", leave: "bye bye", death: "minecraft death", online: "lets go party", offline: "good night" } },
   },
   rules: "1. Respeta a los demas jugadores.\n2. Nada de griefing ni robar (todo queda registrado).\n3. No uses hacks, x-ray ni exploits.\n4. No spam ni publicidad en el chat.\n5. Construye lejos del spawn y de las bases ajenas.\n6. Avisa a un admin si ves un problema.",
 };
@@ -191,7 +193,32 @@ async function discordEmbed(kind: Kind, embed: Embed, opts: { mention?: boolean;
   await post({ content: (mention ? "@everyone " : "") + (opts.content ?? ""), allowed_mentions: { parse: mention ? ["everyone"] : [] }, embeds: [{ footer, timestamp: new Date().toISOString(), ...embed }] });
 }
 
-const gifOf = async (k: keyof MessagesSettings["discord"]["gifs"]) => { const s = await settings(); const g = s.discord.gifs[k]?.trim(); if (!g) return undefined; const list = g.split(/\s+/).filter(Boolean); return { url: pick(list) }; };
+const gifOf = async (k: keyof MessagesSettings["discord"]["gifs"]) => {
+  const s = await settings();
+  const g = s.discord.gifs[k]?.trim();
+  if (g) { const list = g.split(/\s+/).filter(Boolean); return { url: pick(list) }; }
+  const gp = s.discord.giphy;
+  if (gp.auto && gp.apiKey && gp.terms[k]) { const url = await giphyRandom(gp.apiKey, gp.terms[k], gp.rating); if (url) return { url }; }
+  return undefined;
+};
+
+// GIF aleatorio de Giphy por tema (endpoint /random). Devuelve la URL directa del gif o null.
+export async function giphyRandom(apiKey: string, tag: string, rating = "pg-13"): Promise<string | null> {
+  try {
+    const r = await fetch(`https://api.giphy.com/v1/gifs/random?api_key=${encodeURIComponent(apiKey)}&tag=${encodeURIComponent(tag)}&rating=${rating}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j?.data?.images?.original?.url ?? j?.data?.images?.downsized?.url ?? null;
+  } catch { return null; }
+}
+
+// Busqueda para el selector de GIFs del panel
+export async function giphySearch(apiKey: string, q: string, rating = "pg-13", limit = 24) {
+  const r = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(q)}&rating=${rating}&limit=${limit}&lang=es`);
+  if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? "API key de Giphy invalida" : `Giphy respondió ${r.status}`);
+  const j = await r.json();
+  return (j.data as { id: string; title: string; images: { original: { url: string }; fixed_height_small: { url: string } } }[]).map((g) => ({ id: g.id, title: g.title, url: g.images.original.url, preview: g.images.fixed_height_small.url }));
+}
 
 export async function notifyJoin(player: string, first: boolean) {
   await discordEmbed("joins", {
