@@ -11,7 +11,7 @@ type Ctx = {
   online: boolean;
   running: boolean;
   history: Entry[];
-  run: (command: string) => Promise<boolean>;
+  run: (command: string, opts?: { quiet?: boolean }) => Promise<boolean>;
   clear: () => void;
 };
 
@@ -21,15 +21,15 @@ export function CommandProvider({ online, children }: { online: boolean; childre
   const [history, setHistory] = useState<Entry[]>([]);
   const [running, setRunning] = useState(false);
 
-  const run = useCallback(async (command: string) => {
+  const run = useCallback(async (command: string, opts: { quiet?: boolean } = {}) => {
     const cmd = command.trim().replace(/^\//, "");
     if (!cmd) return false;
     if (!online) { toast.error("El servidor debe estar en linea"); return false; }
     setRunning(true);
     try {
       await apiFetch("/api/server/command", { method: "POST", body: JSON.stringify({ command: cmd }) });
-      setHistory((h) => [{ id: Date.now(), command: cmd, at: Date.now(), ok: true }, ...h].slice(0, 100));
-      toast.success("Ejecutado", { description: `/${cmd}` });
+      if (!opts.quiet) setHistory((h) => [{ id: Date.now(), command: cmd, at: Date.now(), ok: true }, ...h].slice(0, 100));
+      if (!opts.quiet) toast.success("Ejecutado", { description: `/${cmd}` });
       return true;
     } catch (e) {
       const error = (e as Error).message;

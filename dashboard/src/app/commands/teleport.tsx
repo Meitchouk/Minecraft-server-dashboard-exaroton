@@ -24,18 +24,15 @@ const DIMS: { id: Dim; label: string; icon: React.ElementType }[] = [
 ];
 const dimLabel = (d: Dim) => DIMS.find((x) => x.id === d)?.label ?? d;
 
-// Lee la posicion real de un jugador: ejecuta `data get` y busca la respuesta en el log del servidor
-async function readPosition(run: (c: string) => Promise<boolean>, player: string): Promise<{ x: number; y: number; z: number; dim: Dim } | null> {
-  const okPos = await run(`data get entity ${player} Pos`);
-  if (!okPos) return null;
-  await run(`data get entity ${player} Dimension`);
-  await new Promise((r) => setTimeout(r, 1200));
-  const { content } = await apiFetch<{ content: string }>("/api/server/logs");
-  const lines = content.split("\n").reverse();
+// Lee la posicion real de un jugador por el WebSocket de consola (data get Pos + Dimension)
+async function readPosition(player: string): Promise<{ x: number; y: number; z: number; dim: Dim } | null> {
   const esc = player.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pos = lines.find((l) => new RegExp(`${esc} has the following entity data: \\[`).test(l))?.match(/\[(-?[\d.]+)d, (-?[\d.]+)d, (-?[\d.]+)d\]/);
-  const dim = lines.find((l) => new RegExp(`${esc} has the following entity data: "minecraft:`).test(l))?.match(/"(minecraft:[a-z_]+)"/);
+  const q = (command: string, match: string) => apiFetch<{ line: string | null }>("/api/server/query", { method: "POST", body: JSON.stringify({ command, match }) }).then((r) => r.line);
+  const posLine = await q(`data get entity ${player} Pos`, `${esc} has the following entity data: \\[`);
+  const pos = posLine?.match(/\[(-?[\d.]+)d, (-?[\d.]+)d, (-?[\d.]+)d\]/);
   if (!pos) return null;
+  const dimLine = await q(`data get entity ${player} Dimension`, `${esc} has the following entity data: "minecraft:`);
+  const dim = dimLine?.match(/"(minecraft:[a-z_]+)"/);
   return { x: Math.round(Number(pos[1]) * 10) / 10, y: Math.round(Number(pos[2]) * 10) / 10, z: Math.round(Number(pos[3]) * 10) / 10, dim: (dim?.[1] as Dim) ?? "minecraft:overworld" };
 }
 
@@ -65,7 +62,7 @@ export function TeleportCommand({ players }: { players: string[] }) {
     if (!p || p.startsWith("@")) return toast.error("Elige un jugador concreto (no un selector) para leer su posicion");
     setReading(true);
     try {
-      const pos = await readPosition(run, p);
+      const pos = await readPosition(p).catch((e) => { toast.error((e as Error).message); return null; });
       if (!pos) return toast.error("No se encontro la posicion en el log", { description: "Prueba de nuevo en unos segundos." });
       setX(String(pos.x)); setY(String(pos.y)); setZ(String(pos.z)); setDim(pos.dim);
       toast.success(`${p} esta en ${pos.x}, ${pos.y}, ${pos.z} (${dimLabel(pos.dim)})`);

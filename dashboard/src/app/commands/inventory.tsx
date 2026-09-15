@@ -1,12 +1,13 @@
 "use client";
-import { useMemo, useState } from "react";
-import { Backpack, RefreshCw, Trash2, Plus, Search, Loader2, Shield, Hand, Sparkles, Eraser } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Backpack, RefreshCw, Trash2, Plus, Search, Loader2, Shield, Hand, Sparkles, Eraser, CheckSquare, Square, Copy, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -27,31 +28,33 @@ const ARMOR: { slot: number; label: string; path: string }[] = [
   { slot: 100, label: "Botas", path: "armor.feet" },
 ];
 const slotPath = (slot: number) => slot === -106 ? "weapon.offhand" : ARMOR.find((a) => a.slot === slot)?.path ?? `container.${slot}`;
+const fullId = (id: string) => (id.includes(":") ? id : `minecraft:${id}`);
 
-// Lee el inventario real: `data get` + busca la respuesta en el log (una linea con "Slot:" o "[]")
-async function readInventory(run: (c: string) => Promise<boolean>, player: string): Promise<InvSlot[] | null> {
-  if (!(await run(`data get entity ${player} Inventory`))) return null;
-  await new Promise((r) => setTimeout(r, 1300));
-  const { content } = await apiFetch<{ content: string }>("/api/server/logs");
+// Lee el inventario real por el WebSocket de consola: ejecuta `data get` y espera la linea de respuesta (~1-2 s)
+async function readInventory(player: string, before: string[] = []): Promise<InvSlot[] | null> {
   const esc = player.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`${esc} has the following entity data: (\\[.*)$`);
-  const line = content.split("\n").reverse().find((l) => { const m = l.match(re); return m && (m[1].includes("Slot:") || m[1].trim() === "[]"); });
-  const m = line?.match(re);
+  const { line } = await apiFetch<{ line: string | null }>("/api/server/query", {
+    method: "POST",
+    body: JSON.stringify({ commands: [...before, `data get entity ${player} Inventory`], match: `${esc} has the following entity data: \\[`, timeout: 10000 }),
+  });
+  const m = line?.trim().match(/has the following entity data: (\[.*)$/);
   if (!m) return null;
   try { return parseInventory(m[1].trim()); } catch (e) { toast.error("No se pudo interpretar el inventario", { description: (e as Error).message }); return null; }
 }
 
 export function InventoryCommand({ catalog, players }: { catalog: Catalog | null; players: string[] }) {
-  const { run, online, running } = useCommands();
+  const { online, running } = useCommands();
   const [player, setPlayer] = useState(players[0] ?? "");
   const [inv, setInv] = useState<InvSlot[] | null>(null);
   const [loadedFor, setLoadedFor] = useState("");
   const [reading, setReading] = useState(false);
-  const [sel, setSel] = useState<number | null>(null);
+  const [sel, setSel] = useState<Set<number>>(() => new Set());
+  const [auto, setAuto] = useState(false);
   const [q, setQ] = useState("");
   const [addItem, setAddItem] = useState<CatalogItem | null>(null);
   const [addAmount, setAddAmount] = useState(1);
   const [addEnch, setAddEnch] = useState(false);
+  const loadRef = useRef<() => void>(() => {});
 
   const byId = useMemo(() => new Map((catalog?.items ?? []).map((i) => [i.name, i])), [catalog]);
   const bySlot = useMemo(() => new Map((inv ?? []).map((s) => [s.slot, s])), [inv]);
@@ -59,23 +62,45 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
   const busy = !online || running || reading;
   const validPlayer = !!player.trim() && !player.startsWith("@");
 
-  const load = async () => {
-    if (!validPlayer) return toast.error("Elige un jugador concreto");
+  const load = async (silent = false, before: string[] = []) => {
+    if (!validPlayer) { if (!silent) toast.error("Elige un jugador concreto"); return; }
+    const who = player.trim();
     setReading(true);
     try {
-      const r = await readInventory(run, player.trim());
-      if (r) { setInv(r); setLoadedFor(player.trim()); setSel(null); }
-      else toast.error("No se pudo leer el inventario", { description: "¿Esta el jugador conectado? Prueba de nuevo." });
+      const r = await readInventory(who, before).catch((e) => { if (!silent) toast.error((e as Error).message); return null; });
+      if (r) {
+        setInv(r);
+        if (who !== loadedFor) { setLoadedFor(who); setSel(new Set()); }
+        else setSel((s) => new Set([...s].filter((slot) => r.some((x) => x.slot === slot)))); // conserva seleccion de slots que siguen ocupados
+      } else if (!silent) toast.error("No se pudo leer el inventario", { description: "¿Esta el jugador conectado? Prueba de nuevo." });
     } finally { setReading(false); }
   };
+  useEffect(() => { loadRef.current = () => load(true); });
 
-  const after = () => setTimeout(load, 400);
+  // Auto-actualizacion opcional (cada 15 s, solo con pestaña visible)
+  useEffect(() => {
+    if (!auto || !online) return;
+    const t = setInterval(() => { if (document.visibilityState === "visible") loadRef.current(); }, 15000);
+    return () => clearInterval(t);
+  }, [auto, online]);
 
-  const removeSlot = async (slot: number) => {
-    const ok = await run(`item replace entity ${loadedFor} ${slotPath(slot)} with minecraft:air`);
-    if (ok) after();
+  // Ejecuta una o varias ordenes y refresca el inventario al terminar
+  // Envia las ordenes y la lectura del inventario en una sola sesion de consola (rapido) y refresca
+  const act = async (cmds: string[], okMsg?: string) => {
+    if (!online) return toast.error("El servidor debe estar en linea");
+    await load(false, cmds);
+    if (okMsg) toast.success(okMsg);
   };
-  const clearAll = async () => { if (await run(`clear ${loadedFor}`)) after(); };
+
+  const selectedSlots = useMemo(() => [...sel].filter((s) => bySlot.has(s)).sort((a, b) => a - b), [sel, bySlot]);
+  const selectedItems = selectedSlots.map((s) => bySlot.get(s)!);
+  const nameOf = (it: InvSlot) => it.name ?? (byId.get(it.id) ? label(byId.get(it.id)!) : it.id);
+
+  const toggle = (slot: number) => setSel((s) => { const n = new Set(s); if (n.has(slot)) n.delete(slot); else n.add(slot); return n; });
+  const selectAll = () => setSel(new Set((inv ?? []).map((s) => s.slot)));
+  const removeSelected = () => act(selectedSlots.map((s) => `item replace entity ${loadedFor} ${slotPath(s)} with minecraft:air`), `${selectedSlots.length} objeto(s) quitado(s)`);
+  const duplicateSelected = () => act(selectedItems.map((it) => `give ${loadedFor} ${fullId(it.id)} ${it.count}`), `${selectedItems.length} objeto(s) duplicado(s)`);
+  const clearAll = () => act([`clear ${loadedFor}`], "Inventario vaciado");
 
   const results = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -83,23 +108,16 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
     return (catalog?.items ?? []).filter((i) => i.name.includes(n) || i.displayName.toLowerCase().includes(n) || (i.es ?? "").toLowerCase().includes(n)).slice(0, 24);
   }, [catalog, q]);
 
-  const give = async () => {
-    if (!addItem || !loadedFor) return;
-    const ok = await run(buildGive({ item: addItem.name, amount: addAmount, target: loadedFor, ench: addEnch ? recommendedFor(addItem.name, catalog) : {}, version }));
-    if (ok) after();
-  };
+  const give = () => addItem && loadedFor && act([buildGive({ item: addItem.name, amount: addAmount, target: loadedFor, ench: addEnch ? recommendedFor(addItem.name, catalog) : {}, version })], `${label(addItem)} x${addAmount} agregado`);
 
-  const slotProps = (slot: number) => { const it = bySlot.get(slot); return { it, meta: it ? byId.get(it.id) : undefined, version, sel, setSel, catalog }; };
-
-  const selected = sel !== null ? bySlot.get(sel) : undefined;
-  const selMeta = selected ? byId.get(selected.id) : undefined;
+  const slotProps = (slot: number) => { const it = bySlot.get(slot); return { it, meta: it ? byId.get(it.id) : undefined, version, selected: sel.has(slot), toggle, catalog }; };
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       <Card className="lg:col-span-3">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Backpack className="size-4 text-primary" />Inventario{loadedFor && <span className="font-mono text-sm font-normal text-muted-foreground">de {loadedFor}</span>}</CardTitle>
-          <CardDescription>Se lee con <code className="rounded bg-muted px-1">data get</code> desde el log del servidor. Pasa el raton por un slot para ver detalles; haz clic para seleccionarlo.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Backpack className="size-4 text-primary" />Inventario{loadedFor && <span className="font-mono text-sm font-normal text-muted-foreground">de {loadedFor}</span>}{reading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}</CardTitle>
+          <CardDescription>Lectura en tiempo real por la consola del servidor; se actualiza sola despues de cada accion. Haz clic en los slots para seleccionar varios.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -107,13 +125,13 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
               <Label className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Jugador</Label>
               <TargetPicker value={player} onChange={setPlayer} players={players} allowSelectors={false} />
             </div>
-            <Button onClick={load} disabled={busy || !validPlayer}>{reading ? <Loader2 className="animate-spin" /> : <RefreshCw />}{inv && loadedFor === player.trim() ? "Actualizar" : "Leer inventario"}</Button>
+            <Button onClick={() => load()} disabled={busy || !validPlayer}>{reading ? <Loader2 className="animate-spin" /> : <RefreshCw />}{inv && loadedFor === player.trim() ? "Actualizar" : "Leer inventario"}</Button>
           </div>
 
           {inv === null ? (
             <div className="grid place-items-center rounded-lg border border-dashed py-14 text-sm text-muted-foreground">Elige un jugador conectado y pulsa &quot;Leer inventario&quot;.</div>
           ) : (
-            <div className="space-y-3">
+            <div className={cn("space-y-3 transition-opacity", reading && "opacity-60")}>
               <div className="flex gap-3">
                 <div className="grid w-12 shrink-0 grid-cols-1 gap-1">
                   {ARMOR.map((a) => <Slot key={a.slot} slot={a.slot} {...slotProps(a.slot)} hint={a.label} Icon={Shield} />)}
@@ -128,8 +146,11 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
               </div>
               <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                 <Badge variant="secondary">{inv.length} objetos · {inv.reduce((a, s) => a + s.count, 0)} unidades</Badge>
+                <Button size="xs" variant="ghost" onClick={selectAll} disabled={inv.length === 0}><CheckSquare />Seleccionar todo</Button>
+                <Button size="xs" variant="ghost" onClick={() => setSel(new Set())} disabled={sel.size === 0}><Square />Limpiar</Button>
+                <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><Timer className="size-3.5" />Auto cada 15 s <Switch checked={auto} onCheckedChange={setAuto} /></label>
                 <AlertDialog>
-                  <AlertDialogTrigger render={<Button size="sm" variant="destructive" className="ml-auto" disabled={busy || inv.length === 0} />}><Eraser />Vaciar todo</AlertDialogTrigger>
+                  <AlertDialogTrigger render={<Button size="sm" variant="destructive" disabled={busy || inv.length === 0} />}><Eraser />Vaciar todo</AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader><AlertDialogTitle>Vaciar el inventario de {loadedFor}?</AlertDialogTitle><AlertDialogDescription>Se borraran los {inv.length} objetos, incluida la armadura equipada. No se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
                     <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={clearAll}>Vaciar</AlertDialogAction></AlertDialogFooter>
@@ -142,25 +163,43 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
       </Card>
 
       <div className="flex flex-col gap-4 lg:col-span-2 lg:sticky lg:top-20 lg:self-start">
-        {/* Seleccionado */}
+        {/* Seleccion */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Objeto seleccionado</CardTitle>
-            <CardDescription>{selected ? <span className="font-mono">{selected.id} · slot {sel}</span> : "Haz clic en un slot con objeto"}</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-base">Seleccion {selectedItems.length > 0 && <Badge>{selectedItems.length}</Badge>}</CardTitle>
+            <CardDescription>{selectedItems.length ? `${selectedItems.reduce((a, s) => a + s.count, 0)} unidades en ${selectedItems.length} slot(s)` : "Haz clic en uno o varios slots con objeto"}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {selected ? (
+            {selectedItems.length > 0 ? (
               <>
-                <p className="text-lg font-medium">{selected.name ?? (selMeta ? label(selMeta) : selected.id)} <span className="text-sm text-muted-foreground">x{selected.count}</span></p>
-                {Object.keys(selected.enchants).length > 0 && (
-                  <div className="flex flex-wrap gap-1">{Object.entries(selected.enchants).map(([k, v]) => <Badge key={k} variant="outline" className="border-chart-5/40 text-chart-5">{catalog?.enchantments.find((e) => e.name === k)?.es ?? k} {v}</Badge>)}</div>
+                <ul className="max-h-48 space-y-1 overflow-auto pr-1">
+                  {selectedItems.map((it) => (
+                    <li key={it.slot} className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
+                      <span className="min-w-0 flex-1 truncate">{nameOf(it)} <span className="text-muted-foreground">x{it.count}</span>{Object.keys(it.enchants).length > 0 && <Sparkles className="ml-1 inline size-3 text-chart-5" />}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">slot {it.slot}</span>
+                      <Button size="icon-xs" variant="ghost" onClick={() => toggle(it.slot)}>×</Button>
+                    </li>
+                  ))}
+                </ul>
+                {selectedItems.length === 1 && Object.keys(selectedItems[0].enchants).length > 0 && (
+                  <div className="flex flex-wrap gap-1">{Object.entries(selectedItems[0].enchants).map(([k, v]) => <Badge key={k} variant="outline" className="border-chart-5/40 text-chart-5">{catalog?.enchantments.find((e) => e.name === k)?.es ?? k} {v}</Badge>)}</div>
                 )}
-                <div className="flex gap-2">
-                  <Button variant="destructive" onClick={() => removeSlot(sel!)} disabled={busy}><Trash2 />Quitar del inventario</Button>
-                  <Button variant="outline" onClick={() => run(`give ${loadedFor} ${selected.id.includes(":") ? selected.id : `minecraft:${selected.id}`} ${selected.count}`).then((ok) => ok && after())} disabled={busy} title="Duplicar">+{selected.count}</Button>
+                <div className="flex flex-wrap gap-2">
+                  {selectedItems.length > 3 ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger render={<Button variant="destructive" disabled={busy} />}><Trash2 />Quitar {selectedItems.length}</AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader><AlertDialogTitle>Quitar {selectedItems.length} objetos?</AlertDialogTitle><AlertDialogDescription>{selectedItems.map(nameOf).join(", ")}</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={removeSelected}>Quitar</AlertDialogAction></AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : (
+                    <Button variant="destructive" onClick={removeSelected} disabled={busy}><Trash2 />Quitar {selectedItems.length > 1 ? selectedItems.length : ""}</Button>
+                  )}
+                  <Button variant="outline" onClick={duplicateSelected} disabled={busy}><Copy />Duplicar</Button>
                 </div>
               </>
-            ) : <p className="text-sm text-muted-foreground">Selecciona un objeto de la cuadricula para quitarlo o duplicarlo.</p>}
+            ) : <p className="text-sm text-muted-foreground">Selecciona objetos de la cuadricula para quitarlos o duplicarlos en bloque.</p>}
           </CardContent>
         </Card>
 
@@ -204,12 +243,12 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
   );
 }
 
-function Slot({ slot, hint, Icon, it, meta, version, sel, setSel, catalog }: { slot: number; hint?: string; Icon?: React.ElementType; it?: InvSlot; meta?: CatalogItem; version: string; sel: number | null; setSel: (s: number | null) => void; catalog: Catalog | null }) {
+function Slot({ slot, hint, Icon, it, meta, version, selected, toggle, catalog }: { slot: number; hint?: string; Icon?: React.ElementType; it?: InvSlot; meta?: CatalogItem; version: string; selected: boolean; toggle: (s: number) => void; catalog: Catalog | null }) {
   const enchN = it ? Object.keys(it.enchants).length : 0;
   const cell = (
-    <button onClick={() => setSel(it ? slot : null)}
+    <button onClick={() => it && toggle(slot)} disabled={!it}
       className={cn("relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md border bg-black/40 transition-colors",
-        it ? "hover:border-primary/50" : "border-dashed border-white/10", sel === slot && "border-primary bg-primary/10", enchN > 0 && "shadow-[inset_0_0_0_1px_oklch(0.75_0.15_300/60%)]")}>
+        it ? "hover:border-primary/50" : "border-dashed border-white/10", selected && "border-primary bg-primary/15 ring-1 ring-primary/60", enchN > 0 && !selected && "shadow-[inset_0_0_0_1px_oklch(0.75_0.15_300/60%)]")}>
       {it ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -218,6 +257,7 @@ function Slot({ slot, hint, Icon, it, meta, version, sel, setSel, catalog }: { s
           <span className="hidden max-w-full break-all px-0.5 text-center text-[8px] leading-tight">{(meta ? label(meta) : it.id.split(":").pop() ?? it.id).slice(0, 14)}</span>
           {it.count > 1 && <span className="absolute bottom-0.5 right-1 font-mono text-[11px] font-semibold drop-shadow">{it.count}</span>}
           {enchN > 0 && <Sparkles className="absolute left-0.5 top-0.5 size-3 text-chart-5" />}
+          {selected && <CheckSquare className="absolute right-0.5 top-0.5 size-3 text-primary" />}
         </>
       ) : Icon ? <Icon className="size-4 text-white/15" /> : null}
     </button>
@@ -237,5 +277,4 @@ function Slot({ slot, hint, Icon, it, meta, version, sel, setSel, catalog }: { s
       </TooltipContent>
     </Tooltip>
   );
-};
-
+}

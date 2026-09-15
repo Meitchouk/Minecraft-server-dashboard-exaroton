@@ -124,3 +124,49 @@ export type ConfigOption = {
   max: number | null;
   step: number | null;
 };
+
+// ---- Consola en tiempo real (WebSocket) ----
+// Ejecuta uno o varios comandos (en orden) a traves del stream de consola y devuelve la primera linea que cumpla `match`.
+// Mucho mas rapido y fiable que /logs (que va con varios segundos de retraso).
+import WebSocket from "ws";
+
+export function queryConsole(id: string, commands: string | string[], match: RegExp, timeoutMs = 8000): Promise<string | null> {
+  const list = Array.isArray(commands) ? commands : [commands];
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://api.exaroton.com/v1/servers/${id}/websocket`, { headers: { Authorization: `Bearer ${token()}` } });
+    let done = false;
+    const finish = (v: string | null, err?: Error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch {}
+      if (err) reject(err); else resolve(v);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    ws.on("error", (e) => finish(null, new ExarotonError(`WebSocket: ${e.message}`, 502)));
+
+    // Los comandos se envian uno a uno: el siguiente sale cuando el anterior produce alguna linea de salida
+    // (o tras 400 ms si no produce ninguna). Asi la consulta final siempre ve el estado ya modificado.
+    let idx = 0;
+    let waiting = false;
+    let gap: ReturnType<typeof setTimeout> | undefined;
+    const sendNext = () => {
+      if (done || idx >= list.length) return;
+      ws.send(JSON.stringify({ stream: "console", type: "command", data: list[idx++] }));
+      if (idx < list.length) { waiting = true; gap = setTimeout(() => { waiting = false; sendNext(); }, 400); }
+      else waiting = false;
+    };
+
+    ws.on("message", (raw) => {
+      let msg: { type: string; stream?: string; data?: unknown };
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+      if (msg.type === "ready") ws.send(JSON.stringify({ stream: "console", type: "start", data: { tail: 0 } }));
+      else if (msg.stream === "console" && msg.type === "started") sendNext();
+      else if (msg.stream === "console" && msg.type === "line") {
+        const line = String(msg.data).trimEnd();
+        if (waiting) { clearTimeout(gap); waiting = false; setTimeout(sendNext, 30); }
+        else if (idx >= list.length && match.test(line)) finish(line);
+      } else if (msg.type === "disconnected") finish(null, new ExarotonError(`Consola desconectada: ${msg.data}`, 502));
+    });
+  });
+}
