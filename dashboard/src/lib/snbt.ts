@@ -1,6 +1,9 @@
 // Parser minimo de SNBT (el formato que imprime `data get`): compounds, listas, arrays tipados,
 // strings con/sin comillas y numeros con sufijo (1b, 2s, 3L, 1.5f, 2.0d).
 export type Snbt = string | number | boolean | Snbt[] | { [k: string]: Snbt };
+// Cada compound lleva (no enumerable) el texto SNBT original de cada valor, para poder reconstruirlo exacto
+export const RAW = Symbol("raw");
+export const rawOf = (o: unknown): Record<string, string> => ((o as { [RAW]?: Record<string, string> })?.[RAW]) ?? {};
 
 export function parseSnbt(src: string): Snbt {
   let i = 0;
@@ -48,6 +51,8 @@ export function parseSnbt(src: string): Snbt {
   const compound = (): { [k: string]: Snbt } => {
     i++; // {
     const out: { [k: string]: Snbt } = {};
+    const raw: Record<string, string> = {};
+    Object.defineProperty(out, RAW, { value: raw, enumerable: false });
     ws();
     if (src[i] === "}") { i++; return out; }
     for (;;) {
@@ -56,7 +61,10 @@ export function parseSnbt(src: string): Snbt {
       ws();
       if (src[i] !== ":") fail("se esperaba ':'");
       i++;
+      ws();
+      const vs = i;
       out[key] = value();
+      raw[key] = src.slice(vs, i).trim();
       ws();
       if (src[i] === ",") { i++; continue; }
       if (src[i] === "}") { i++; return out; }
@@ -85,7 +93,7 @@ export function parseSnbt(src: string): Snbt {
   return v;
 }
 
-export type InvSlot = { slot: number; id: string; count: number; enchants: Record<string, number>; name?: string; extra: string[] };
+export type InvSlot = { slot: number; id: string; count: number; enchants: Record<string, number>; name?: string; extra: string[]; spec: string };
 
 // Normaliza la lista Inventory de `data get` a algo comodo para la UI (soporta componentes 1.20.5+ y NBT viejo)
 export function parseInventory(raw: string): InvSlot[] {
@@ -105,6 +113,12 @@ export function parseInventory(raw: string): InvSlot[] {
     const cn = comps["minecraft:custom_name"];
     if (typeof cn === "string") { try { const j = JSON.parse(cn); name = typeof j === "string" ? j : j?.text; } catch { name = cn; } }
     const extra = Object.keys(comps).filter((k) => !["minecraft:enchantments", "minecraft:custom_name"].includes(k)).map((k) => k.replace(/^minecraft:/, ""));
-    return { slot: Number(o.Slot ?? 0), id: String(o.id ?? "").replace(/^minecraft:/, ""), count: Number(o.count ?? o.Count ?? 1), enchants, name, extra };
+    // spec = argumento de /give que reproduce el objeto exacto: id[comp=valor,...] (1.20.5+) o id{nbt} (antiguo)
+    const fullId = String(o.id ?? "");
+    const compRaw = rawOf(comps);
+    const compEntries = Object.entries(compRaw).map(([k, v]) => `${k.replace(/^"|"$/g, "")}=${v}`);
+    const tagRaw = rawOf(o).tag;
+    const spec = compEntries.length ? `${fullId}[${compEntries.join(",")}]` : tagRaw ? `${fullId}${tagRaw}` : fullId;
+    return { slot: Number(o.Slot ?? 0), id: fullId.replace(/^minecraft:/, ""), count: Number(o.count ?? o.Count ?? 1), enchants, name, extra, spec };
   });
 }

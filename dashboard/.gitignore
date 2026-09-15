@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .next-dev.log
+
+# copias de inventarios y ajustes locales
+/data
