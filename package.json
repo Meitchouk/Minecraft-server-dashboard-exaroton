@@ -1,0 +1,17 @@
+{
+  "name": "exaroton-manager",
+  "version": "1.0.0",
+  "description": "CLI para administrar un servidor de Exaroton via su API",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "exa": "node --env-file=.env src/cli.js",
+    "servers": "node --env-file=.env src/cli.js servers",
+    "status": "node --env-file=.env src/cli.js status",
+    "start": "node --env-file=.env src/cli.js start",
+    "stop": "node --env-file=.env src/cli.js stop",
+    "restart": "node --env-file=.env src/cli.js restart",
+    "logs": "node --env-file=.env src/cli.js logs"
+  }
+}
