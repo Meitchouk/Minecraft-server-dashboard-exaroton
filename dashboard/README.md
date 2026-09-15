@@ -66,7 +66,16 @@ Si no hay clave de servicio, las copias y la auditoria caen a archivos en `data/
 | `/files` | Explorador con editor de texto, subir, crear carpeta, eliminar, descargar |
 | `/settings` | Mi API key (temporal por sesion), RAM (slider), MOTD con vista previa y colores §, datos del servidor y cuenta |
 | `/discipline` | Castigos y premios rapidos para un jugador |
+| `/messages` | Bienvenida con titulo al entrar, consejos automaticos, reglas (/rules) y avisos a Discord por webhook — sin mods, via observador de consola |
+| `/stats` | Estadisticas reales por jugador (world/players/stats) e historial de conexiones (grafica 24h/7d/30d, sesiones) |
 | `/admin` | (solo admin) aprobar/revocar usuarios, roles, contraseñas y auditoria |
+
+## Observador de consola
+
+`lib/watcher.ts` mantiene una conexion permanente al stream de consola del servidor por defecto (arranca en
+`instrumentation.ts`). Detecta entradas/salidas (`logged in with entity id` / `lost connection`), envia la bienvenida,
+registra presencia y muestras cada 5 min (Firestore `servers/<id>/presence` y `samples`), publica en Discord si hay webhook
+y emite los consejos automaticos. Se reconecta solo.
 
 ## Catalogo de items
 

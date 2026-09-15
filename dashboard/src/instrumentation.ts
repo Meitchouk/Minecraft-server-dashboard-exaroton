@@ -3,5 +3,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { schedule } = await import("@/lib/backup");
     await schedule();
+    const { startWatcher } = await import("@/lib/watcher");
+    await startWatcher();
   }
 }
