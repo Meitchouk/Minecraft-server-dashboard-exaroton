@@ -148,11 +148,14 @@ export default function MessagesPage() {
             <CardDescription>Avisos del servidor a un canal de Discord, sin mods ni bot. En el canal: Editar canal → Integraciones → Webhooks → Nuevo webhook → copiar URL.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Input type="password" placeholder="https://discord.com/api/webhooks/…" value={d.discord.webhook} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, webhook: e.target.value } })} className="font-mono text-xs" />
+            <div className="flex gap-2">
+              <Input type="password" placeholder="https://discord.com/api/webhooks/…" value={d.discord.webhook} readOnly={!canEdit} onChange={(e) => set({ discord: { ...d.discord, webhook: e.target.value } })} className="font-mono text-xs" />
+              <Button variant="outline" disabled={!canEdit || !d.discord.webhook} onClick={() => apiFetch("/api/messages/preview", { method: "POST", body: JSON.stringify({ discord: d.discord.webhook }) }).then(() => toast.success("Mensaje de prueba enviado a Discord")).catch((e) => toast.error((e as Error).message))}>Probar</Button>
+            </div>
             {([["joins", "Entradas y salidas de jugadores"], ["deaths", "Muertes"], ["serverStatus", "Servidor encendido / apagado"], ["chat", "Todo el chat del juego"]] as const).map(([k, label]) => (
               <div key={k} className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="text-sm">{label}</span><Switch checked={d.discord[k]} disabled={!canEdit} onCheckedChange={(v) => set({ discord: { ...d.discord, [k]: v } })} /></div>
             ))}
-            <p className="text-[11px] text-muted-foreground">Esto es de una sola direccion (juego → Discord). Para que lo escrito en Discord aparezca en el juego haria falta un bot o un mod.</p>
+            <p className="text-[11px] text-muted-foreground">Los avisos se envian cuando ocurre el evento (alguien entra, muere, el servidor arranca…); si el servidor esta apagado no hay nada que avisar. Es de una sola direccion (juego → Discord). Para que lo escrito en Discord aparezca en el juego haria falta un bot o un mod.</p>
           </CardContent>
         </Card>
       </div>

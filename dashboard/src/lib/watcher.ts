@@ -184,8 +184,8 @@ async function onLine(line: string) {
     return;
   }
   if ((m = line.match(RE_CHAT))) { await discord(`**${m[1]}**: ${m[2]}`, "chat"); return; }
-  if (RE_DONE.test(line)) { st.serverOnline = true; await discord("✅ El servidor está en línea", "serverStatus"); await syncOnline(); return; }
-  if (RE_STOP.test(line)) { st.serverOnline = false; st.online.clear(); await discord("⏹️ El servidor se está apagando", "serverStatus"); return; }
+  if (RE_DONE.test(line)) { st.serverOnline = true; await syncOnline(); return; }
+  if (RE_STOP.test(line)) { st.serverOnline = false; st.online.clear(); return; }
   // muertes: linea de broadcast con un jugador conectado como primera palabra y sin ser chat/comando
   const death = line.match(/^\[[^\]]*\] \[Server thread\/INFO\]: (\S+) (was|died|drowned|blew up|fell|hit the ground|went up in flames|burned|tried to swim|suffocated|starved|withered|froze|experienced|walked into|discovered|was killed|was slain|was shot|was fireballed|was pummeled|was impaled|was squashed|was struck|was poked|was stung|was skewered|was doomed|was obliterated|left the confines|didn.t want|was roasted|was frozen)/);
   if (death && st.online.has(death[1])) await discord(`☠️ ${line.replace(/^\[[^\]]*\] \[[^\]]*\]: /, "")}`, "deaths");
@@ -236,7 +236,16 @@ function connect() {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === "ready") { ws.send(JSON.stringify({ stream: "console", type: "start", data: { tail: 0 } })); syncOnline(); }
     else if (msg.stream === "console" && msg.type === "line") onLine(String(msg.data).trimEnd()).catch(() => {});
-    else if (msg.type === "status") { const s = msg.data as { status?: number }; if (typeof s?.status === "number") { st.serverOnline = s.status === 1; if (!st.serverOnline) st.online.clear(); } }
+    else if (msg.type === "status") {
+      const s = msg.data as { status?: number; players?: { list?: string[] } };
+      if (typeof s?.status === "number") {
+        const wasOnline = st.serverOnline;
+        st.serverOnline = s.status === 1;
+        if (st.serverOnline && s.players?.list) st.online = new Set(s.players.list);
+        if (!st.serverOnline) st.online.clear();
+        if (wasOnline !== st.serverOnline) discord(st.serverOnline ? "✅ El servidor está en línea" : s.status === 7 ? "💥 El servidor se ha caído (crash)" : "⏹️ El servidor está apagado", "serverStatus").catch(() => {});
+      }
+    }
   });
   const retry = () => { st.connected = false; if (st.reconnectTimer) clearTimeout(st.reconnectTimer); st.reconnectTimer = setTimeout(connect, 15000); };
   ws.on("close", retry);
@@ -266,4 +275,13 @@ export async function previewWelcome(player: string) {
   if (s.welcome.title) cmds.push(`title ${player} title {"text":"${esc(fill(s.welcome.title, player))}","color":"green","bold":true}`);
   if (s.welcome.chat) cmds.push(`tellraw ${player} {"text":"${esc(fill(s.welcome.chat, player))}","color":"gray"}`);
   await queryConsole(defaultServerId(), cmds, /$^/, 1500).catch(() => null);
+}
+
+// Envia un mensaje de prueba al webhook configurado (o al que se pase)
+export async function testDiscord(webhook?: string) {
+  const url = webhook?.trim() || (await settings()).discord.webhook;
+  if (!url) throw new Error("No hay webhook configurado");
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "✅ Prueba desde el panel de Exaroton: el webhook funciona. Recibirás aquí los avisos activados." }) });
+  if (!r.ok) throw new Error(`Discord respondió ${r.status}`);
+  return true;
 }
