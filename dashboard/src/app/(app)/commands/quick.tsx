@@ -18,8 +18,8 @@ const GROUPS: { title: string; desc: string; icon: React.ElementType; needsTarge
     { label: "Dia", cmd: "time set day", icon: Sun }, { label: "Mediodia", cmd: "time set noon", icon: Sun },
     { label: "Noche", cmd: "time set night", icon: Moon }, { label: "Medianoche", cmd: "time set midnight", icon: Moon },
     { label: "Despejado", cmd: "weather clear 100000", icon: CloudSun }, { label: "Lluvia", cmd: "weather rain", icon: CloudRain }, { label: "Tormenta", cmd: "weather thunder", icon: CloudLightning },
-    { label: "Ciclo dia ON", cmd: "gamerule doDaylightCycle true", variant: "outline" }, { label: "Ciclo dia OFF", cmd: "gamerule doDaylightCycle false", variant: "outline" },
-    { label: "Clima ON", cmd: "gamerule doWeatherCycle true", variant: "outline" }, { label: "Clima OFF", cmd: "gamerule doWeatherCycle false", variant: "outline" },
+    { label: "Ciclo dia ON", cmd: "gamerule advance_time true", variant: "outline" }, { label: "Ciclo dia OFF", cmd: "gamerule advance_time false", variant: "outline" },
+    { label: "Clima ON", cmd: "gamerule advance_weather true", variant: "outline" }, { label: "Clima OFF", cmd: "gamerule advance_weather false", variant: "outline" },
   ]},
   { title: "Jugador", desc: "Acciones sobre el objetivo seleccionado", icon: Gamepad2, needsTarget: true, items: [
     { label: "Curar", cmd: "effect give {t} minecraft:instant_health 1 10 true", icon: Heart },
@@ -36,11 +36,12 @@ const GROUPS: { title: string; desc: string; icon: React.ElementType; needsTarge
   { title: "Reglas del mundo", desc: "Dificultad y gamerules comunes", icon: Globe2, items: [
     { label: "Pacifico", cmd: "difficulty peaceful", variant: "secondary" }, { label: "Facil", cmd: "difficulty easy", variant: "secondary" },
     { label: "Normal", cmd: "difficulty normal", variant: "secondary" }, { label: "Dificil", cmd: "difficulty hard", variant: "secondary" },
-    { label: "keepInventory ON", cmd: "gamerule keepInventory true", variant: "outline" }, { label: "keepInventory OFF", cmd: "gamerule keepInventory false", variant: "outline" },
-    { label: "mobGriefing ON", cmd: "gamerule mobGriefing true", variant: "outline" }, { label: "mobGriefing OFF", cmd: "gamerule mobGriefing false", variant: "outline" },
+    { label: "keepInventory ON", cmd: "gamerule keep_inventory true", variant: "outline" }, { label: "keepInventory OFF", cmd: "gamerule keep_inventory false", variant: "outline" },
+    { label: "mobGriefing ON", cmd: "gamerule mob_griefing true", variant: "outline" }, { label: "mobGriefing OFF", cmd: "gamerule mob_griefing false", variant: "outline" },
     { label: "PvP ON", cmd: "gamerule pvp true", icon: Swords, variant: "outline" }, { label: "PvP OFF", cmd: "gamerule pvp false", icon: Swords, variant: "outline" },
-    { label: "Fuego se extiende OFF", cmd: "gamerule doFireTick false", variant: "outline" }, { label: "Fuego se extiende ON", cmd: "gamerule doFireTick true", variant: "outline" },
-    { label: "Mobs spawn OFF", cmd: "gamerule doMobSpawning false", variant: "outline" }, { label: "Mobs spawn ON", cmd: "gamerule doMobSpawning true", variant: "outline" },
+    { label: "Fuego se extiende OFF", cmd: "gamerule fire_spread_radius_around_player 0", variant: "outline" }, { label: "Fuego se extiende ON", cmd: "gamerule fire_spread_radius_around_player 128", variant: "outline" },
+    { label: "Phantoms OFF", cmd: "gamerule spawn_phantoms false", variant: "outline" }, { label: "Phantoms ON", cmd: "gamerule spawn_phantoms true", variant: "outline" },
+    { label: "Mobs spawn OFF", cmd: "gamerule spawn_mobs false", variant: "outline" }, { label: "Mobs spawn ON", cmd: "gamerule spawn_mobs true", variant: "outline" },
     { label: "Ver semilla", cmd: "seed", icon: Flag, variant: "outline" },
   ]},
   { title: "Servidor", desc: "Mantenimiento y administracion", icon: Wrench, items: [

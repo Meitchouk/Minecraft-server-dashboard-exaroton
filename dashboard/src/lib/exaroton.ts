@@ -165,6 +165,8 @@ export function queryConsole(id: string, commands: string | string[], match: Reg
       else if (msg.stream === "console" && msg.type === "started") sendNext();
       else if (msg.stream === "console" && msg.type === "line") {
         const line = String(msg.data).trimEnd();
+        // la consola repite el comando enviado como una linea mas: no es una respuesta
+        if (list.some((c) => line === c || line.endsWith(`: ${c}`))) return;
         if (waiting) { clearTimeout(gap); waiting = false; setTimeout(sendNext, 30); }
         else if (idx >= list.length && match.test(line)) finish(line);
       } else if (msg.type === "disconnected") finish(null, new ExarotonError(`Consola desconectada: ${msg.data}`, 502));
