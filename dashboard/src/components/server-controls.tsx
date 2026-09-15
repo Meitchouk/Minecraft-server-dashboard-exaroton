@@ -8,12 +8,16 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { apiFetch } from "@/lib/client";
+import { usePermissions } from "@/hooks/use-permissions";
+import { AdminBadge } from "@/components/admin-only";
 
 type Action = "start" | "stop" | "restart";
 
 export function ServerControls({ status, onDone, size = "default" }: { status?: number; onDone?: () => void; size?: "sm" | "default" | "lg" }) {
   const [busy, setBusy] = useState<Action | null>(null);
-  const online = status === 1;
+  const perms = usePermissions();
+  const allowed = perms.can("server.power");
+  const online = status === 1 && allowed;
   const offline = status === 0 || status === 7;
   const transitional = status !== undefined && !online && !offline;
 
@@ -34,10 +38,11 @@ export function ServerControls({ status, onDone, size = "default" }: { status?: 
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button size={size} onClick={() => run("start")} disabled={!offline || busy !== null || transitional} className="glow-primary">
+      <Button size={size} onClick={() => run("start")} disabled={!allowed || !offline || busy !== null || transitional} className={allowed ? "glow-primary" : undefined} title={allowed ? undefined : perms.why("server.power")}>
         {busy === "start" ? <Loader2 className="animate-spin" /> : <Play />}
         Iniciar
       </Button>
+      {perms.ready && !allowed && <AdminBadge />}
       <Confirm online={online} busy={busy} run={run} size={size} action="restart" label="Reiniciar" variant="outline" icon={<RotateCw />}
         desc="Los jugadores conectados seran desconectados mientras el servidor reinicia." />
       <Confirm online={online} busy={busy} run={run} size={size} action="stop" label="Detener" variant="destructive" icon={<Square />}

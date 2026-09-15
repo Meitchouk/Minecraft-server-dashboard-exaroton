@@ -14,6 +14,8 @@ import { PageHeader } from "@/components/page-header";
 import { useDraft, usePoll, useServer } from "@/hooks/use-server";
 import { apiFetch, type ConfigOption } from "@/lib/client";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
+import { ReadOnlyNotice } from "@/components/admin-only";
 
 // Agrupacion y ayudas para las opciones mas comunes
 const GROUPS: { id: string; title: string; icon: React.ElementType; keys: string[] }[] = [
@@ -82,6 +84,8 @@ export default function ConfigPage() {
   const draft = useMemo(() => draftState ?? {}, [draftState]);
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState(false);
+  const perms = usePermissions();
+  const canWrite = perms.can("config.write");
 
   const changed = useMemo(() => (options ?? []).filter((o) => isDirty(o.value, draft[o.key])), [options, draft]);
 
@@ -124,6 +128,7 @@ export default function ConfigPage() {
         <Button variant="outline" size="sm" onClick={() => { refresh(); toast.info("Recargado"); }}><RotateCcw />Recargar</Button>
       </PageHeader>
 
+      {perms.ready && !canWrite && <ReadOnlyNotice what="editar server.properties" />}
       {server?.status === 1 && (
         <div className="flex items-center gap-2 rounded-lg border border-chart-3/30 bg-chart-3/10 px-3 py-2 text-sm text-chart-3">
           <AlertTriangle className="size-4 shrink-0" /> El servidor esta en linea: los cambios se guardan pero se aplican al reiniciar.
@@ -151,7 +156,7 @@ export default function ConfigPage() {
                         <p className="font-mono text-[11px] text-muted-foreground">{o.key}</p>
                         {HINTS[o.key] && <p className="mt-0.5 text-xs text-muted-foreground">{HINTS[o.key]}</p>}
                       </div>
-                      <Field opt={o} value={draft[o.key]} onChange={(v) => setDraft((d) => ({ ...d, [o.key]: v }))} />
+                      <div className={cn(!canWrite && "pointer-events-none opacity-60")}><Field opt={o} value={draft[o.key]} onChange={(v) => setDraft((d) => ({ ...d, [o.key]: v }))} /></div>
                     </div>
                   );
                 })}
@@ -168,7 +173,7 @@ export default function ConfigPage() {
       )}>
         <span className="text-sm"><b>{changed.length}</b> cambio(s) sin guardar</span>
         <Button size="sm" variant="ghost" onClick={() => setDraft(initial)}>Descartar</Button>
-        <Button size="sm" onClick={save} disabled={saving}><Save />Guardar</Button>
+        <Button size="sm" onClick={save} disabled={saving || !canWrite}><Save />Guardar</Button>
       </div>
     </div>
   );

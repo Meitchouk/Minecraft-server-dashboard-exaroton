@@ -11,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
 import { usePoll, useServer } from "@/hooks/use-server";
 import { apiFetch } from "@/lib/client";
+import { usePermissions } from "@/hooks/use-permissions";
+import { AdminBadge, ReadOnlyNotice } from "@/components/admin-only";
 
 const LISTS = [
   { id: "whitelist", label: "Whitelist", icon: ListChecks, desc: "Jugadores autorizados a entrar (si white-list esta activo)." },
@@ -26,6 +28,8 @@ function Avatar({ name }: { name: string }) {
 
 function PlayerList({ list, online }: { list: string; online: string[] }) {
   const { data, loading, refresh, setData } = usePoll(() => apiFetch<string[]>(`/api/server/playerlists/${list}`), 15000, [list]);
+  const perms = usePermissions();
+  const canEdit = list === "ops" ? perms.can("players.ops") : list.startsWith("banned") ? perms.can("players.bans") : true;
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const isIp = list === "banned-ips";
@@ -53,13 +57,14 @@ function PlayerList({ list, online }: { list: string; online: string[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {perms.ready && !canEdit && <ReadOnlyNotice what={list === "ops" ? "gestionar operadores" : "gestionar baneos"} />}
       <div className="flex gap-2">
         <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()}
           placeholder={isIp ? "IP (ej. 203.0.113.5)" : "Nombre(s) separados por espacio o coma"} className="font-mono" />
-        <Button onClick={() => add()} disabled={busy || !input.trim()}><UserPlus />Agregar</Button>
+        <Button onClick={() => add()} disabled={busy || !input.trim() || !canEdit}><UserPlus />Agregar</Button>
       </div>
 
-      {!isIp && candidates.length > 0 && (
+      {!isIp && canEdit && candidates.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <Zap className="size-3.5 text-primary" /> Conectados ahora:
           {candidates.map((p) => <Button key={p} size="xs" variant="secondary" onClick={() => add([p])}>+ {p}</Button>)}
@@ -75,7 +80,7 @@ function PlayerList({ list, online }: { list: string; online: string[] }) {
               {!isIp && <Avatar name={name} />}
               <span className="min-w-0 flex-1 truncate font-mono text-sm">{name}</span>
               {online.includes(name) && <span className="size-2 rounded-full bg-primary" title="Conectado" />}
-              <Button size="icon-xs" variant="ghost" className="opacity-60 group-hover:opacity-100" onClick={() => remove(name)} aria-label="Quitar"><X /></Button>
+              {canEdit && <Button size="icon-xs" variant="ghost" className="opacity-60 group-hover:opacity-100" onClick={() => remove(name)} aria-label="Quitar"><X /></Button>}
             </li>
           ))}
         </ul>
@@ -89,6 +94,7 @@ export default function PlayersPage() {
   const { data: server } = useServer(5000);
   const online = server?.players.list ?? [];
   const [tab, setTab] = useState("whitelist");
+  const permsTop = usePermissions();
   const current = LISTS.find((l) => l.id === tab)!;
 
   return (
@@ -99,7 +105,7 @@ export default function PlayersPage() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
         <TabsList className="w-full sm:w-auto">
-          {LISTS.map((l) => <TabsTrigger key={l.id} value={l.id} className="gap-1.5"><l.icon className="size-4" />{l.label}</TabsTrigger>)}
+          {LISTS.map((l) => <TabsTrigger key={l.id} value={l.id} className="gap-1.5"><l.icon className="size-4" />{l.label}{permsTop.ready && l.id !== "whitelist" && !(l.id === "ops" ? permsTop.can("players.ops") : permsTop.can("players.bans")) && <AdminBadge />}</TabsTrigger>)}
         </TabsList>
         {LISTS.map((l) => (
           <TabsContent key={l.id} value={l.id}>

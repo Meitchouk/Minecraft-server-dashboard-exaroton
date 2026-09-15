@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/page-header";
 import { OwnKeyCard } from "@/components/own-key-card";
+import { usePermissions } from "@/hooks/use-permissions";
+import { AdminBadge } from "@/components/admin-only";
 import { useDraft, usePoll, useServer } from "@/hooks/use-server";
 import { apiFetch, motdToSpans } from "@/lib/client";
 
@@ -42,6 +44,8 @@ export default function SettingsPage() {
   const ramDraft = ramDraftState ?? 2;
   const motdDraft = motdDraftState ?? "";
   const [saving, setSaving] = useState<"ram" | "motd" | null>(null);
+  const perms = usePermissions();
+  const canOpt = perms.can("server.options");
 
   const offline = server?.status === 0 || server?.status === 7;
   const ramCost = (ramDraft * 1).toFixed(0); // Exaroton: 1 credito por GB por hora
@@ -74,7 +78,7 @@ export default function SettingsPage() {
         {/* RAM */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><MemoryStick className="size-4 text-primary" />Memoria RAM</CardTitle>
+            <CardTitle className="flex items-center gap-2"><MemoryStick className="size-4 text-primary" />Memoria RAM{perms.ready && !canOpt && <AdminBadge />}</CardTitle>
             <CardDescription>Solo se puede cambiar con el servidor apagado. Exaroton cobra ~1 credito por GB/hora.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -84,12 +88,12 @@ export default function SettingsPage() {
                   <span className="text-4xl font-semibold tabular-nums">{ramDraft}<span className="ml-1 text-base font-normal text-muted-foreground">GB</span></span>
                   <span className="text-xs text-muted-foreground">≈ {ramCost} creditos / hora</span>
                 </div>
-                <Slider min={2} max={16} step={1} value={[ramDraft]} onValueChange={(v) => setRamDraft(Array.isArray(v) ? v[0] : (v as number))} disabled={!offline} />
+                <Slider min={2} max={16} step={1} value={[ramDraft]} onValueChange={(v) => setRamDraft(Array.isArray(v) ? v[0] : (v as number))} disabled={!offline || !canOpt} />
                 <div className="flex justify-between text-[11px] text-muted-foreground"><span>2 GB</span><span>16 GB</span></div>
                 {!offline && (
                   <p className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"><Info className="size-3.5" />Deten el servidor para modificar la RAM.</p>
                 )}
-                <Button onClick={saveRam} disabled={!offline || saving === "ram" || ramDraft === ram.ram}><Save />Guardar RAM</Button>
+                <Button onClick={saveRam} disabled={!canOpt || !offline || saving === "ram" || ramDraft === ram.ram}><Save />Guardar RAM</Button>
               </>
             )}
           </CardContent>
@@ -98,14 +102,14 @@ export default function SettingsPage() {
         {/* MOTD */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><MessageSquareText className="size-4 text-primary" />MOTD</CardTitle>
+            <CardTitle className="flex items-center gap-2"><MessageSquareText className="size-4 text-primary" />MOTD{perms.ready && !canOpt && <AdminBadge />}</CardTitle>
             <CardDescription>Mensaje que se ve en la lista de servidores. Usa codigos § para color.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {!motd ? <Skeleton className="h-24" /> : (
               <>
                 <MotdPreview motd={motdDraft} />
-                <Textarea value={motdDraft} onChange={(e) => setMotdDraft(e.target.value)} rows={3} className="font-mono" maxLength={200} />
+                <Textarea value={motdDraft} onChange={(e) => setMotdDraft(e.target.value)} rows={3} className="font-mono" maxLength={200} readOnly={!canOpt} />
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="mr-1 text-xs text-muted-foreground">Insertar:</span>
                   {COLORS.map(([code, hex]) => (
@@ -119,7 +123,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">{motdDraft.length}/200</span>
-                  <Button onClick={saveMotd} disabled={saving === "motd" || motdDraft === motd.motd}><Save />Guardar MOTD</Button>
+                  <Button onClick={saveMotd} disabled={!canOpt || saving === "motd" || motdDraft === motd.motd}><Save />Guardar MOTD</Button>
                 </div>
               </>
             )}

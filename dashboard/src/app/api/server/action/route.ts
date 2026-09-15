@@ -1,9 +1,10 @@
 import { api, ExarotonError } from "@/lib/exaroton";
-import { handle, serverIdFrom, userFrom } from "@/lib/route";
+import { handle, requirePerm, serverIdFrom, userFrom } from "@/lib/route";
 import { audit } from "@/lib/audit";
 
 export const POST = handle(async (req) => {
   const id = serverIdFrom(req);
+  requirePerm(req, "server.power");
   const { action, useOwnCredits } = await req.json();
   await audit({ serverId: id, kind: "action", command: String(action), source: userFrom(req).username });
   switch (action) {

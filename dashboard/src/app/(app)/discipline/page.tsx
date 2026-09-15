@@ -13,6 +13,9 @@ import { TargetPicker } from "@/components/target-picker";
 import { CommandProvider, useCommands } from "@/components/command-runner";
 import { useServer } from "@/hooks/use-server";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
+import { isDangerousCommand } from "@/lib/permissions";
+import { AdminBadge } from "@/components/admin-only";
 
 // {t} = objetivo, {m} = motivo/mensaje escrito por el admin
 type Action = { label: string; desc: string; icon: React.ElementType; cmds: string[]; danger?: boolean; confirm?: boolean; needsMsg?: boolean };
@@ -64,7 +67,10 @@ const REWARD: Action[] = [
 
 function ActionButton({ a, target, msg, tone }: { a: Action; target: string; msg: string; tone: "bad" | "good" }) {
   const { run, online, running } = useCommands();
-  const ready = !!target.trim() && (!a.needsMsg || !!msg.trim());
+  const perms = usePermissions();
+  const resolved = a.cmds.map((c) => c.replaceAll("{t}", target.trim() || "x").replaceAll("{m}", msg.trim() || "x"));
+  const adminOnly = !perms.can("command.dangerous") && resolved.some(isDangerousCommand);
+  const ready = !!target.trim() && (!a.needsMsg || !!msg.trim()) && !adminOnly;
   const exec = async () => {
     for (const c of a.cmds) { const ok = await run(c.replaceAll("{t}", target.trim()).replaceAll("{m}", msg.trim())); if (!ok) break; }
   };
@@ -75,7 +81,7 @@ function ActionButton({ a, target, msg, tone }: { a: Action; target: string; msg
         a.danger && "border-destructive/30")}>
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-md", tone === "bad" ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary")}><a.icon className="size-4" /></span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2 text-sm font-medium">{a.label}{a.needsMsg && <Badge variant="outline" className="h-4 px-1 text-[9px]">motivo</Badge>}{a.confirm && <Badge variant="outline" className="h-4 border-destructive/40 px-1 text-[9px] text-destructive">confirmar</Badge>}</span>
+        <span className="flex items-center gap-2 text-sm font-medium">{a.label}{a.needsMsg && <Badge variant="outline" className="h-4 px-1 text-[9px]">motivo</Badge>}{a.confirm && <Badge variant="outline" className="h-4 border-destructive/40 px-1 text-[9px] text-destructive">confirmar</Badge>}{adminOnly && <AdminBadge />}</span>
         <span className="block text-xs text-muted-foreground">{a.desc}</span>
       </span>
     </button>

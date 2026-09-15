@@ -16,6 +16,8 @@ import { PageHeader } from "@/components/page-header";
 import { apiFetch, formatBytes, type FileInfo } from "@/lib/client";
 import { useDraft, usePoll } from "@/hooks/use-server";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
+import { ReadOnlyNotice } from "@/components/admin-only";
 
 const SHORTCUTS = [
   { label: "Raiz", path: "/" },
@@ -34,6 +36,8 @@ export default function FilesPage() {
   const [path, setPath] = useState("/");
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState("");
+  const perms = usePermissions();
+  const canWrite = perms.can("files.write");
 
   // Carga info del nodo y, si es texto legible y pequeno, su contenido
   const { data, loading: fetching, error, refresh, key } = usePoll(async () => {
@@ -107,6 +111,7 @@ export default function FilesPage() {
         <Button variant="outline" size="sm" onClick={() => load(path)}><RefreshCw className={cn(loading && "animate-spin")} />Recargar</Button>
       </PageHeader>
 
+      {perms.ready && !canWrite && <ReadOnlyNotice what="modificar archivos" />}
       <div className="flex flex-wrap gap-1.5">
         {SHORTCUTS.map((s) => (
           <Button key={s.path} size="xs" variant={norm(path) === s.path ? "default" : "secondary"} onClick={() => setPath(s.path)}>{s.label}</Button>
@@ -125,7 +130,7 @@ export default function FilesPage() {
           {info && !info.isDirectory && <Badge variant="outline" className="ml-2 font-mono text-[11px]">{formatBytes(info.size)}</Badge>}
 
           <div className="ml-auto flex items-center gap-1.5">
-            {info?.isDirectory && (
+            {info?.isDirectory && canWrite && (
               <>
                 <Dialog>
                   <DialogTrigger render={<Button size="sm" variant="outline" />}><FolderPlus />Carpeta</DialogTrigger>
@@ -143,10 +148,10 @@ export default function FilesPage() {
             {content !== null && (
               <>
                 <Button size="sm" variant="outline" onClick={download}><Download />Descargar</Button>
-                <Button size="sm" onClick={save} disabled={!dirty || saving || !info?.isWritable}><Save />Guardar</Button>
+                {canWrite && <Button size="sm" onClick={save} disabled={!dirty || saving || !info?.isWritable}><Save />Guardar</Button>}
               </>
             )}
-            {info && norm(path) !== "/" && (
+            {info && norm(path) !== "/" && canWrite && (
               <AlertDialog>
                 <AlertDialogTrigger render={<Button size="sm" variant="destructive" />}><Trash2 /></AlertDialogTrigger>
                 <AlertDialogContent>
@@ -181,12 +186,12 @@ export default function FilesPage() {
                     {!c.isReadable && <Lock className="size-3 text-muted-foreground" />}
                     <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">{c.isDirectory ? "" : formatBytes(c.size)}</span>
                   </button>
-                  <Button size="icon-xs" variant="ghost" className="mr-2 opacity-0 group-hover:opacity-100" onClick={() => remove(norm(c.path))} aria-label="Eliminar"><Trash2 /></Button>
+                  {canWrite && <Button size="icon-xs" variant="ghost" className="mr-2 opacity-0 group-hover:opacity-100" onClick={() => remove(norm(c.path))} aria-label="Eliminar"><Trash2 /></Button>}
                 </li>
               ))}
             </ul>
           ) : content !== null ? (
-            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false}
+            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} readOnly={!canWrite}
               className="min-h-[60vh] resize-y rounded-none border-0 bg-black/40 font-mono text-[12.5px] leading-relaxed focus-visible:ring-0" />
           ) : (
             <div className="p-8 text-center text-sm text-muted-foreground">

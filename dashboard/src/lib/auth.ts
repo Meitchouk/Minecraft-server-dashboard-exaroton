@@ -131,19 +131,23 @@ export async function requireSession(): Promise<Session> {
 
 export async function requireAdmin(): Promise<Session> {
   const s = await requireSession();
-  if (s.role !== "admin") throw new ExarotonError("Solo el administrador puede hacer esto", 403);
-  return s;
+  const st = await accountState(s.username);
+  if (st.role !== "admin") throw new ExarotonError("Solo el administrador puede hacer esto", 403);
+  return { ...s, role: "admin" };
 }
 
-// Aprobacion con cache corta (evita una lectura de Firestore por peticion)
-const approvedCache = new Map<string, { v: boolean; at: number }>();
-export async function isApproved(username: string): Promise<boolean> {
+// Estado de la cuenta (aprobacion y rol) con cache corta: evita una lectura de Firestore por peticion
+// pero hace que aprobar/revocar/cambiar rol surta efecto casi al instante aunque el JWT siga vivo.
+type AccountState = { approved: boolean; role: Role; exists: boolean };
+const stateCache = new Map<string, { v: AccountState; at: number }>();
+export async function accountState(username: string): Promise<AccountState> {
   const u = normalizeUsername(username);
-  const c = approvedCache.get(u);
+  const c = stateCache.get(u);
   if (c && Date.now() - c.at < 30000) return c.v;
   const doc = await getUser(u).catch(() => null);
-  const v = !!doc?.approved;
-  approvedCache.set(u, { v, at: Date.now() });
+  const v: AccountState = { approved: !!doc?.approved, role: doc?.role ?? "user", exists: !!doc };
+  stateCache.set(u, { v, at: Date.now() });
   return v;
 }
-export const invalidateApproval = (username: string) => approvedCache.delete(normalizeUsername(username));
+export const isApproved = async (username: string) => (await accountState(username)).approved;
+export const invalidateApproval = (username: string) => stateCache.delete(normalizeUsername(username));

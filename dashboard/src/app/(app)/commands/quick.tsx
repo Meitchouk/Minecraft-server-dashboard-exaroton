@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TargetPicker } from "@/components/target-picker";
 import { useCommands } from "@/components/command-runner";
+import { usePermissions } from "@/hooks/use-permissions";
+import { isDangerousCommand } from "@/lib/permissions";
+import { AdminBadge } from "@/components/admin-only";
 
 type Q = { label: string; cmd: string; icon?: React.ElementType; variant?: "default" | "secondary" | "outline" | "destructive" };
 
@@ -53,6 +56,7 @@ const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
 export function QuickCommands({ players }: { players: string[] }) {
   const { run, online, running } = useCommands();
+  const perms = usePermissions();
   const [target, setTarget] = useState("@a");
   const [msg, setMsg] = useState("");
   const [title, setTitle] = useState("");
@@ -95,10 +99,11 @@ export function QuickCommands({ players }: { players: string[] }) {
             <div className="flex flex-wrap gap-1.5">
               {g.items.map((it) => {
                 const cmd = it.cmd.replaceAll("{t}", target.trim());
+                const locked = !perms.can("command.dangerous") && isDangerousCommand(cmd);
                 return (
-                  <Button key={it.label} size="sm" variant={it.variant ?? "default"} disabled={!online || running || (g.needsTarget && !target.trim())}
-                    onClick={() => run(cmd)} title={`/${cmd}`}>
-                    {it.icon && <it.icon />}{it.label}
+                  <Button key={it.label} size="sm" variant={it.variant ?? "default"} disabled={locked || !online || running || (g.needsTarget && !target.trim())}
+                    onClick={() => run(cmd)} title={locked ? perms.why("command.dangerous") : `/${cmd}`}>
+                    {it.icon && <it.icon />}{it.label}{locked && <AdminBadge />}
                   </Button>
                 );
               })}

@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { usePoll, useDraft } from "@/hooks/use-server";
 import { apiFetch } from "@/lib/client";
+import { usePermissions } from "@/hooks/use-permissions";
+import { AdminBadge } from "@/components/admin-only";
 
 type Settings = { enabled: boolean; intervalMin: number; keepDays: number; enderChest: boolean };
 type Status = { running: boolean; lastRun: number | null; lastResult: string | null; nextRun: number | null; players: Record<string, number> };
@@ -23,6 +25,8 @@ export function BackupsCard({ onRan }: { onRan?: () => void }) {
   const [draft, setDraft] = useDraft<Settings>(settings, key);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const perms = usePermissions();
+  const canCfg = perms.can("backup.settings");
   const d = draft ?? { enabled: false, intervalMin: 5, keepDays: 14, enderChest: true };
   const dirty = settings && JSON.stringify(d) !== JSON.stringify(settings);
 
@@ -42,7 +46,7 @@ export function BackupsCard({ onRan }: { onRan?: () => void }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><DatabaseBackup className="size-4 text-primary" />Copias automaticas</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base"><DatabaseBackup className="size-4 text-primary" />Copias automaticas{perms.ready && !canCfg && <AdminBadge />}</CardTitle>
         <CardDescription>El panel guarda en disco el inventario (y cofre de Ender) de todos los conectados cada cierto tiempo, aunque nadie tenga esta pagina abierta. Asi se pueden recuperar objetos perdidos por bugs o muertes.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -53,7 +57,7 @@ export function BackupsCard({ onRan }: { onRan?: () => void }) {
         )}
         <div className="flex items-center justify-between rounded-lg border px-3 py-2">
           <span className="flex items-center gap-2 text-sm">Activar copias {status?.running && <Badge className="h-4 px-1 text-[10px]">activo</Badge>}</span>
-          <Switch checked={d.enabled} onCheckedChange={(v) => setDraft({ ...d, enabled: v })} />
+          <Switch checked={d.enabled} onCheckedChange={(v) => setDraft({ ...d, enabled: v })} disabled={!canCfg} />
         </div>
         <div className="grid grid-cols-2 gap-3 text-xs">
           <label className="space-y-1"><span className="text-muted-foreground">Cada (min)</span><Input type="number" min={1} max={120} value={d.intervalMin} onChange={(e) => setDraft({ ...d, intervalMin: Number(e.target.value) || 5 })} className="h-8 font-mono" /></label>
@@ -61,10 +65,10 @@ export function BackupsCard({ onRan }: { onRan?: () => void }) {
         </div>
         <div className="flex items-center justify-between rounded-lg border px-3 py-2">
           <span className="text-sm">Incluir cofre de Ender</span>
-          <Switch checked={d.enderChest} onCheckedChange={(v) => setDraft({ ...d, enderChest: v })} />
+          <Switch checked={d.enderChest} onCheckedChange={(v) => setDraft({ ...d, enderChest: v })} disabled={!canCfg} />
         </div>
         <div className="flex gap-2">
-          <Button size="sm" onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" /> : null}Guardar</Button>
+          <Button size="sm" onClick={save} disabled={!dirty || saving || !canCfg}>{saving ? <Loader2 className="animate-spin" /> : null}Guardar</Button>
           <Button size="sm" variant="outline" onClick={runNow} disabled={running}>{running ? <Loader2 className="animate-spin" /> : <Play />}Copiar ahora</Button>
         </div>
         {status && (
