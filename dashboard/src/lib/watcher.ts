@@ -258,6 +258,31 @@ export async function notifyStatus(online: boolean, crashed = false) {
   }
 }
 
+// ---- Idempotencia ----
+// Cada evento se reclama una sola vez en Firestore (servers/<id>/notified/<clave>, creado con create(), que falla si ya
+// existe). Asi, aunque haya dos procesos del panel (dev + produccion, un reinicio a medias, dos pestañas del servidor
+// de Next...) o la consola repita una linea, cada aviso a Discord y cada bienvenida salen UNA vez.
+const claimed = new Map<string, number>(); // respaldo en memoria si no hay Firestore
+async function claim(key: string): Promise<boolean> {
+  const k = key.replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 400);
+  const now = Date.now();
+  for (const [kk, t] of claimed) if (now - t > 3600000) claimed.delete(kk);
+  if (claimed.has(k)) return false;
+  claimed.set(k, now);
+  const d = db();
+  if (!d) return true;
+  try {
+    await d.collection("servers").doc(defaultServerId()).collection("notified").doc(k).create({ at: now });
+    return true;
+  } catch (e) {
+    const code = (e as { code?: number | string }).code;
+    if (code === 6 || code === "already-exists" || /ALREADY_EXISTS/i.test(String((e as Error).message))) return false;
+    return true; // otro error de Firestore: mejor avisar que callar
+  }
+}
+// Clave estable para una linea de consola: su hora [hh:mm:ss] + texto sin el prefijo de hilo
+const lineKey = (scope: string, line: string) => `${scope}:${line.replace(/^(\[[^\]]*\]) \[[^\]]*\]: /, "$1 ").slice(0, 300)}`;
+
 // ---- Manejo de lineas ----
 const RE_JOIN = /^\[[^\]]*\] \[[^\]]*\]: (\S+)\[\/[^\]]*\] logged in with entity id/;
 const RE_LEAVE = /^\[[^\]]*\] \[[^\]]*\]: (\S+) lost connection: /;
@@ -272,6 +297,7 @@ async function onLine(line: string) {
     const player = m[1];
     const first = !st.online.has(player) && !(await hasPlayedBefore(player));
     st.online.add(player); st.events++;
+    if (!(await claim(lineKey("join", line)))) return; // otro proceso ya lo atendio
     await recordPresence({ at: Date.now(), player, type: "join" });
     await notifyJoin(player, first);
     const s = await settings();
@@ -286,16 +312,16 @@ async function onLine(line: string) {
   }
   if ((m = line.match(RE_LEAVE))) {
     const player = m[1];
-    if (st.online.delete(player)) { st.events++; await recordPresence({ at: Date.now(), player, type: "leave" }); await notifyLeave(player); }
+    if (st.online.delete(player) && (await claim(lineKey("leave", line)))) { st.events++; await recordPresence({ at: Date.now(), player, type: "leave" }); await notifyLeave(player); }
     return;
   }
-  if ((m = line.match(RE_CHAT))) { await discord(`**${m[1]}**: ${m[2]}`, "chat"); return; }
+  if ((m = line.match(RE_CHAT))) { if (await claim(lineKey("chat", line))) await discord(`**${m[1]}**: ${m[2]}`, "chat"); return; }
   if (RE_DONE.test(line)) { applyStatus(true); await syncOnline(); return; }
   if (RE_STOP.test(line)) { applyStatus(false); return; }
   // muertes: linea de broadcast con un jugador conectado como primera palabra y sin ser chat/comando
   // Styled Chat antepone "[☠] " al mensaje de muerte: se admite un prefijo entre corchetes opcional
   const death = line.match(/^\[[^\]]*\] \[Server thread\/INFO\]: (?:\[[^\]]*\] )?(\S+) (was|died|drowned|blew up|fell|hit the ground|went up in flames|burned|tried to swim|suffocated|starved|withered|froze|experienced|walked into|discovered|was killed|was slain|was shot|was fireballed|was pummeled|was impaled|was squashed|was struck|was poked|was stung|was skewered|was doomed|was obliterated|left the confines|didn.t want|was roasted|was frozen)/);
-  if (death && st.online.has(death[1])) await notifyDeath(death[1], line.replace(/^\[[^\]]*\] \[[^\]]*\]: (?:\[[^\]]*\] )?/, ""));
+  if (death && st.online.has(death[1]) && (await claim(lineKey("death", line)))) await notifyDeath(death[1], line.replace(/^\[[^\]]*\] \[[^\]]*\]: (?:\[[^\]]*\] )?/, ""));
 }
 
 async function hasPlayedBefore(player: string) {
@@ -325,6 +351,7 @@ function scheduleAuto() {
     const cur = await settings();
     if (!cur.auto.enabled || !cur.auto.messages.length || !st.serverOnline || st.online.size === 0 || !st.connected) return;
     const msg = cur.auto.messages[st.autoIdx % cur.auto.messages.length]; st.autoIdx++;
+    if (!(await claim(`auto:${Math.floor(Date.now() / (cur.auto.intervalMin * 60000))}`))) return;
     send(`tellraw @a [{"text":"[Servidor] ","color":"green"},{"text":"${esc(msg)}","color":"gray"}]`);
   }, s.auto.intervalMin * 60000);
 }
@@ -340,7 +367,7 @@ function applyStatus(online: boolean, opts: { crashed?: boolean; silent?: boolea
   const last = st.lastStatusNotice;
   if (last && last.online === online && Date.now() - last.at < 10 * 60000) return;
   st.lastStatusNotice = { online, at: Date.now() };
-  notifyStatus(online, !!opts.crashed).catch(() => {});
+  claim(`status:${online ? "online" : "offline"}:${Math.floor(Date.now() / 60000)}`).then((ok) => { if (ok) return notifyStatus(online, !!opts.crashed); }).catch(() => {});
 }
 
 // ---- Conexion ----
