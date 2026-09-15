@@ -66,13 +66,15 @@ type State = {
   settings: MessagesSettings | null;
   settingsAt: number;
   serverOnline: boolean;
+  statusKnown: boolean;           // ya conocemos el estado real (evita avisar al (re)conectar)
+  lastStatusNotice: { online: boolean; at: number } | null; // ultimo aviso enviado a Discord
   firstJoins: Set<string>;
   events: number;
 };
 
 type G = typeof globalThis & { __exaWatcher?: State };
 const g = globalThis as G;
-g.__exaWatcher ??= { ws: null, online: new Set(), connected: false, lastLine: null, autoIdx: 0, settings: null, settingsAt: 0, serverOnline: false, firstJoins: new Set(), events: 0 };
+g.__exaWatcher ??= { ws: null, online: new Set(), connected: false, lastLine: null, autoIdx: 0, settings: null, settingsAt: 0, serverOnline: false, statusKnown: false, lastStatusNotice: null, firstJoins: new Set(), events: 0 };
 const st = g.__exaWatcher;
 
 const DATA = path.join(process.cwd(), "data");
@@ -287,8 +289,8 @@ async function onLine(line: string) {
     return;
   }
   if ((m = line.match(RE_CHAT))) { await discord(`**${m[1]}**: ${m[2]}`, "chat"); return; }
-  if (RE_DONE.test(line)) { st.serverOnline = true; await syncOnline(); return; }
-  if (RE_STOP.test(line)) { st.serverOnline = false; st.online.clear(); return; }
+  if (RE_DONE.test(line)) { applyStatus(true); await syncOnline(); return; }
+  if (RE_STOP.test(line)) { applyStatus(false); return; }
   // muertes: linea de broadcast con un jugador conectado como primera palabra y sin ser chat/comando
   const death = line.match(/^\[[^\]]*\] \[Server thread\/INFO\]: (\S+) (was|died|drowned|blew up|fell|hit the ground|went up in flames|burned|tried to swim|suffocated|starved|withered|froze|experienced|walked into|discovered|was killed|was slain|was shot|was fireballed|was pummeled|was impaled|was squashed|was struck|was poked|was stung|was skewered|was doomed|was obliterated|left the confines|didn.t want|was roasted|was frozen)/);
   if (death && st.online.has(death[1])) await notifyDeath(death[1], line.replace(/^\[[^\]]*\] \[[^\]]*\]: /, ""));
@@ -308,7 +310,7 @@ async function hasPlayedBefore(player: string) {
 async function syncOnline() {
   try {
     const s = await api.server(defaultServerId());
-    st.serverOnline = s.status === 1;
+    applyStatus(s.status === 1, { silent: true });
     st.online = new Set(s.players.list);
   } catch { /* ignorar */ }
 }
@@ -325,32 +327,45 @@ function scheduleAuto() {
   }, s.auto.intervalMin * 60000);
 }
 
+// Unica via para cambiar el estado en linea/apagado. Avisa a Discord solo si el estado CAMBIA de verdad
+// (no al conectar o sincronizar) y nunca repite el mismo aviso en 10 min.
+function applyStatus(online: boolean, opts: { crashed?: boolean; silent?: boolean } = {}) {
+  const changed = st.statusKnown && online !== st.serverOnline;
+  st.serverOnline = online;
+  st.statusKnown = true;
+  if (!online) st.online.clear();
+  if (opts.silent || !changed) return;
+  const last = st.lastStatusNotice;
+  if (last && last.online === online && Date.now() - last.at < 10 * 60000) return;
+  st.lastStatusNotice = { online, at: Date.now() };
+  notifyStatus(online, !!opts.crashed).catch(() => {});
+}
+
 // ---- Conexion ----
 function connect() {
   const id = defaultServerId();
   const tok = process.env.EXAROTON_TOKEN;
   if (!id || !tok) return;
-  if (st.ws) { try { st.ws.close(); } catch {} st.ws = null; }
+  if (st.ws) { const old = st.ws; st.ws = null; old.removeAllListeners(); try { old.close(); } catch {} }
   const ws = new WebSocket(`wss://api.exaroton.com/v1/servers/${id}/websocket`, { headers: { Authorization: `Bearer ${tok}` } });
   st.ws = ws;
-  ws.on("open", () => { st.connected = true; });
+  const alive = () => st.ws === ws; // ignora eventos de sockets viejos
+  ws.on("open", () => { if (alive()) st.connected = true; });
   ws.on("message", (raw) => {
+    if (!alive()) return;
     let msg: { type: string; stream?: string; data?: unknown };
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === "ready") { ws.send(JSON.stringify({ stream: "console", type: "start", data: { tail: 0 } })); syncOnline(); }
     else if (msg.stream === "console" && msg.type === "line") onLine(String(msg.data).trimEnd()).catch(() => {});
     else if (msg.type === "status") {
       const s = msg.data as { status?: number; players?: { list?: string[] } };
-      if (typeof s?.status === "number") {
-        const wasOnline = st.serverOnline;
-        st.serverOnline = s.status === 1;
-        if (st.serverOnline && s.players?.list) st.online = new Set(s.players.list);
-        if (!st.serverOnline) st.online.clear();
-        if (wasOnline !== st.serverOnline) notifyStatus(st.serverOnline, s.status === 7).catch(() => {});
-      }
+      if (typeof s?.status !== "number") return;
+      const online = s.status === 1;
+      if (online && s.players?.list) st.online = new Set(s.players.list);
+      applyStatus(online, { crashed: s.status === 7 });
     }
   });
-  const retry = () => { st.connected = false; if (st.reconnectTimer) clearTimeout(st.reconnectTimer); st.reconnectTimer = setTimeout(connect, 15000); };
+  const retry = () => { if (!alive()) return; st.connected = false; if (st.reconnectTimer) clearTimeout(st.reconnectTimer); st.reconnectTimer = setTimeout(connect, 15000); };
   ws.on("close", retry);
   ws.on("error", retry);
 }
