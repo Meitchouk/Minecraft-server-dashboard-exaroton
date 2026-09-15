@@ -43,3 +43,7 @@ next-env.d.ts
 
 # copias de inventarios y ajustes locales
 /data
+
+# credenciales de Firebase
+firebase-service-account.json
+*-service-account*.json

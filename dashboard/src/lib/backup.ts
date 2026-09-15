@@ -3,9 +3,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { api, queryConsole, defaultServerId } from "@/lib/exaroton";
 import { parseInventory, type InvSlot } from "@/lib/snbt";
+import { db } from "@/lib/firebase";
 
 // Copias automaticas de inventarios: cada N minutos se lee el inventario y el cofre de Ender de todos los jugadores
-// conectados y se guarda en disco (dashboard/data/inventories/<servidor>/<jugador>.jsonl). Sirve para recuperar
+// conectados y se guarda en Firestore (servers/<id>/players/<jugador>/snapshots) o, si no esta configurado,
+// en disco (dashboard/data/inventories/<servidor>/<jugador>.jsonl). Sirve para recuperar
 // objetos perdidos por bugs, muertes raras, etc. Solo se guarda cuando algo cambio respecto a la ultima copia.
 
 export type BackupSettings = { enabled: boolean; intervalMin: number; keepDays: number; enderChest: boolean };
@@ -51,7 +53,13 @@ async function readEntityList(serverId: string, player: string, pathName: "Inven
 
 const sig = (l: InvSlot[]) => l.map((i) => `${i.slot}:${i.spec}:${i.count}`).sort().join("|");
 
+const col = (serverId: string, player: string) => db()!.collection("servers").doc(serverId).collection("players").doc(player.toLowerCase()).collection("snapshots");
+
 export async function listSnapshots(serverId: string, player: string, limit = 200): Promise<BackupSnapshot[]> {
+  if (db()) {
+    const q = await col(serverId, player).orderBy("at", "desc").limit(limit).get();
+    return q.docs.map((d) => d.data() as BackupSnapshot);
+  }
   try {
     const txt = await fs.readFile(fileFor(serverId, player), "utf8");
     const lines = txt.split("\n").filter(Boolean);
@@ -60,6 +68,10 @@ export async function listSnapshots(serverId: string, player: string, limit = 20
 }
 
 export async function listPlayers(serverId: string): Promise<string[]> {
+  if (db()) {
+    const q = await db()!.collection("servers").doc(serverId).collection("players").get();
+    return q.docs.map((d) => (d.data().name as string) ?? d.id);
+  }
   try {
     const files = await fs.readdir(path.join(DATA, "inventories", safe(serverId)));
     return files.filter((f) => f.endsWith(".jsonl")).map((f) => f.slice(0, -6));
@@ -67,6 +79,18 @@ export async function listPlayers(serverId: string): Promise<string[]> {
 }
 
 async function appendSnapshot(serverId: string, snap: BackupSnapshot, keepDays: number) {
+  if (db()) {
+    const prev = (await listSnapshots(serverId, snap.player, 1))[0];
+    if (prev && sig(prev.items) === sig(snap.items) && sig(prev.ender) === sig(snap.ender)) return false;
+    const playerDoc = db()!.collection("servers").doc(serverId).collection("players").doc(snap.player.toLowerCase());
+    await playerDoc.set({ name: snap.player, lastSnapshot: snap.at }, { merge: true });
+    await col(serverId, snap.player).add(snap);
+    if (Math.random() < 0.1) {
+      const old = await col(serverId, snap.player).where("at", "<", Date.now() - keepDays * 86400000).limit(200).get();
+      const batch = db()!.batch(); old.docs.forEach((d) => batch.delete(d.ref)); await batch.commit();
+    }
+    return true;
+  }
   const file = fileFor(serverId, snap.player);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const prev = (await listSnapshots(serverId, snap.player, 1))[0];

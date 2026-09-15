@@ -19,6 +19,7 @@ const inMin = (t: number | null) => t ? `${Math.max(0, Math.round((t - Date.now(
 export function BackupsCard({ onRan }: { onRan?: () => void }) {
   const { data: settings, key, setData } = usePoll(() => apiFetch<Settings>("/api/backup/settings"));
   const { data: status, refresh: refreshStatus } = usePoll(() => apiFetch<Status>("/api/backup/status"), 20000);
+  const { data: fb } = usePoll(() => apiFetch<{ configured: boolean; reason: string; projectId: string | null }>("/api/firebase/status"), 30000);
   const [draft, setDraft] = useDraft<Settings>(settings, key);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -45,6 +46,11 @@ export function BackupsCard({ onRan }: { onRan?: () => void }) {
         <CardDescription>El panel guarda en disco el inventario (y cofre de Ender) de todos los conectados cada cierto tiempo, aunque nadie tenga esta pagina abierta. Asi se pueden recuperar objetos perdidos por bugs o muertes.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {fb && (
+          <p className={fb.configured ? "rounded-md bg-primary/10 px-2 py-1.5 text-xs text-primary" : "rounded-md bg-chart-3/10 px-2 py-1.5 text-xs text-chart-3"}>
+            {fb.configured ? <>Guardando en Firestore ({fb.projectId})</> : <>Guardando en archivos locales. Firestore no configurado: {fb.reason}</>}
+          </p>
+        )}
         <div className="flex items-center justify-between rounded-lg border px-3 py-2">
           <span className="flex items-center gap-2 text-sm">Activar copias {status?.running && <Badge className="h-4 px-1 text-[10px]">activo</Badge>}</span>
           <Switch checked={d.enabled} onCheckedChange={(v) => setDraft({ ...d, enabled: v })} />
