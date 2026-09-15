@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Search, Gift, Sparkles, Plus, X, Copy, Clock, Package, Wand2, Shield, Swords, Pickaxe, Apple, FlaskRound, Gem, Boxes, Egg, Shapes, LayoutGrid, Backpack } from "lucide-react";
+import { Search, Gift, Sparkles, Plus, X, Copy, Clock, Package, Wand2, Shield, Swords, Pickaxe, Apple, FlaskRound, Gem, Boxes, Egg, Shapes, LayoutGrid, Backpack, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { TargetPicker } from "@/components/target-picker";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useCommands } from "@/components/command-runner";
 import { CATEGORY_META, GEAR_ENCHANTS, KITS, gearType, label, loadLS, saveLS, versionAtLeast, type Catalog, type CatalogItem, type ItemCategory } from "@/hooks/use-catalog";
 import { cn } from "@/lib/utils";
@@ -71,6 +74,7 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
   const [recent, setRecent] = useState<string[]>(() => loadLS(RECENT_KEY, []));
   const [custom, setCustom] = useState<string[]>(() => loadLS(CUSTOM_KEY, []));
   const [customInput, setCustomInput] = useState("");
+  const [kitsUnlocked, setKitsUnlocked] = useState(false);
 
   const version = catalog?.version ?? "1.21";
   const type = item ? gearType(item.name) : null;
@@ -143,16 +147,25 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Backpack className="size-4 text-primary" />Kits rapidos</CardTitle>
-          <CardDescription>Sets completos en un clic, con o sin encantamientos recomendados. Se entregan al objetivo elegido abajo ({target || "—"}).</CardDescription>
+          <CardDescription>Sets completos en un clic. Se entregan a <b className="font-mono text-foreground">{target || "—"}</b> (cambia el objetivo abajo). Bloqueados por seguridad: activa el candado y confirma cada entrega.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {KITS.map((k) => (
-            <div key={k.id} className="flex items-center gap-1 rounded-lg border bg-card/60 px-2.5 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm">{k.label}</span>
-              <Button size="xs" variant="outline" disabled={!online || running} onClick={() => giveKit(k, false)} title="Sin encantar">Normal</Button>
-              <Button size="xs" disabled={!online || running} onClick={() => giveKit(k, true)} title="Con encantamientos recomendados"><Wand2 />Encantado</Button>
-            </div>
-          ))}
+        <CardContent className="space-y-3">
+          <div className={cn("flex items-center justify-between rounded-lg border px-3 py-2", kitsUnlocked ? "border-chart-3/40 bg-chart-3/10" : "bg-muted/30")}>
+            <span className="flex items-center gap-2 text-sm">{kitsUnlocked ? <Unlock className="size-4 text-chart-3" /> : <Lock className="size-4 text-muted-foreground" />}{kitsUnlocked ? "Kits desbloqueados" : "Kits bloqueados"}</span>
+            <Switch checked={kitsUnlocked} onCheckedChange={setKitsUnlocked} />
+          </div>
+          <div className={cn("grid gap-2 sm:grid-cols-2 lg:grid-cols-4 transition-opacity", !kitsUnlocked && "opacity-50")}>
+            {KITS.map((k) => (
+              <div key={k.id} className="flex flex-col gap-2 rounded-lg border bg-card/60 p-3">
+                <p className="text-sm font-medium leading-tight">{k.label}</p>
+                <p className="truncate text-[11px] text-muted-foreground" title={k.items.join(", ")}>{k.items.length} objetos</p>
+                <div className="mt-auto flex gap-1.5">
+                  <KitConfirm kit={k} enchanted={false} target={target} disabled={!online || running || !kitsUnlocked} onConfirm={() => giveKit(k, false)} />
+                  <KitConfirm kit={k} enchanted target={target} disabled={!online || running || !kitsUnlocked} onConfirm={() => giveKit(k, true)} />
+                </div>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -338,5 +351,27 @@ function EnchRow({ e, lvl, set }: { e: EnchEntry; lvl: number; set: (v: number) 
         <Button size="xs" variant="ghost" className="px-1.5" onClick={() => set(lvl === e.maxLevel ? 0 : e.maxLevel)}>max</Button>
       </div>
     </div>
+  );
+}
+
+function KitConfirm({ kit, enchanted, target, disabled, onConfirm }: { kit: (typeof KITS)[number]; enchanted: boolean; target: string; disabled: boolean; onConfirm: () => void }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger render={<Button size="xs" variant={enchanted ? "default" : "outline"} className="flex-1" disabled={disabled} />}>
+        {enchanted && <Wand2 />}{enchanted ? "Encantado" : "Normal"}
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Dar {kit.label}{enchanted ? " encantado" : ""}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Se entregara a <b className="font-mono">{target}</b>: {kit.items.join(", ")}.{enchanted ? " Todo con encantamientos recomendados al nivel maximo." : ""}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>Si, entregar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
