@@ -24,7 +24,7 @@ Abre http://localhost:3000.
 
 ## Usuarios y acceso
 
-- Todo el panel exige sesion. Cualquiera puede **registrarse** (`/register`), pero solo entra cuando un **admin aprueba** la cuenta en `/admin`.
+- Todo el panel exige sesion. Cualquiera puede **registrarse** (`/register`) y entrar; pero el servidor del administrador (su API key) solo se habilita cuando un **admin aprueba** la cuenta en `/admin`. Sin aprobar, el usuario puede operar sus propios servidores con su API key.
 - Usuarios en Firestore (`users/<username>`, contraseña con scrypt). Sesion en cookie httpOnly firmada (JWT, `AUTH_SECRET`).
 - Admin inicial: `npm run seed` (lee `SEED_ADMIN_USER` / `SEED_ADMIN_PASSWORD` de `.env.local`).
 - Cada usuario puede usar **su propia API key de Exaroton** desde Ajustes: se guarda solo en `sessionStorage` de esa pestaña,

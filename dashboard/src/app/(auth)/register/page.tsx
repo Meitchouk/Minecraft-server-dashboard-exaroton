@@ -32,7 +32,7 @@ export default function RegisterPage() {
     <Card>
       <CardHeader>
         <CardTitle>Crear cuenta</CardTitle>
-        <CardDescription>Cualquiera puede registrarse, pero solo podras entrar cuando el administrador apruebe tu cuenta.</CardDescription>
+        <CardDescription>Cualquiera puede registrarse y entrar. El servidor del administrador solo se habilita cuando apruebe tu cuenta; mientras tanto puedes usar tu propia API key.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="space-y-4">

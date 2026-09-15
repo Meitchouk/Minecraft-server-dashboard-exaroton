@@ -79,18 +79,19 @@ export async function updateUser(username: string, patch: Partial<Pick<User, "ro
   if (patch.approved !== undefined) { data.approved = patch.approved; data.approvedAt = patch.approved ? Date.now() : null; data.approvedBy = patch.approved ? (patch.approvedBy ?? null) : null; }
   if (patch.password) { if (patch.password.length < 8) throw new ExarotonError("La contraseña debe tener al menos 8 caracteres", 400); Object.assign(data, hashPassword(patch.password)); }
   await usersCol().doc(u).set(data, { merge: true });
+  invalidateApproval(u);
   return pub({ ...cur, ...data } as UserDoc);
 }
 
 export async function deleteUser(username: string) {
   await usersCol().doc(normalizeUsername(username)).delete();
+  invalidateApproval(username);
 }
 
-// Login: devuelve el usuario si credenciales correctas Y aprobado
+// Login: devuelve el usuario si las credenciales son correctas (aprobado o no; la aprobacion solo limita el uso del servidor del admin)
 export async function authenticate(username: string, password: string): Promise<User> {
   const u = await getUser(username);
   if (!u || !verifyPassword(password, u.salt, u.hash)) throw new ExarotonError("Usuario o contraseña incorrectos", 401);
-  if (!u.approved) throw new ExarotonError("Tu cuenta aun no ha sido aprobada por el administrador", 403);
   await usersCol().doc(u.username).set({ lastLogin: Date.now() }, { merge: true });
   return pub(u);
 }
@@ -133,3 +134,16 @@ export async function requireAdmin(): Promise<Session> {
   if (s.role !== "admin") throw new ExarotonError("Solo el administrador puede hacer esto", 403);
   return s;
 }
+
+// Aprobacion con cache corta (evita una lectura de Firestore por peticion)
+const approvedCache = new Map<string, { v: boolean; at: number }>();
+export async function isApproved(username: string): Promise<boolean> {
+  const u = normalizeUsername(username);
+  const c = approvedCache.get(u);
+  if (c && Date.now() - c.at < 30000) return c.v;
+  const doc = await getUser(u).catch(() => null);
+  const v = !!doc?.approved;
+  approvedCache.set(u, { v, at: Date.now() });
+  return v;
+}
+export const invalidateApproval = (username: string) => approvedCache.delete(normalizeUsername(username));

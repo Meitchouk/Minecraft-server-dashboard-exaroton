@@ -34,7 +34,7 @@ function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Iniciar sesion</CardTitle>
-        <CardDescription>{registered ? "Cuenta creada. Podras entrar cuando el administrador la apruebe." : "Accede con tu usuario del panel."}</CardDescription>
+        <CardDescription>{registered ? "Cuenta creada. Ya puedes entrar; el servidor del administrador se habilita cuando apruebe tu cuenta." : "Accede con tu usuario del panel."}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="space-y-4">

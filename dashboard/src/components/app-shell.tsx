@@ -165,7 +165,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <main className="grid-bg flex-1 px-4 py-6 md:px-8 md:py-8">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
+          <div className="mx-auto w-full max-w-6xl"><PendingBanner />{children}</div>
         </main>
       </div>
     </div>
@@ -195,6 +195,19 @@ function UserBox() {
         </span>
         <Button size="icon-sm" variant="ghost" onClick={logout} title="Cerrar sesion"><LogOut /></Button>
       </div>
+    </div>
+  );
+}
+
+function PendingBanner() {
+  const me = useMe();
+  const own = useSyncExternalStore(subOwn, () => !!getOwnToken(), () => false);
+  if (!me || me.approved || own) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-chart-3/40 bg-chart-3/10 px-4 py-3 text-sm text-chart-3">
+      <ShieldCheck className="size-4 shrink-0" />
+      <span className="flex-1">Tu cuenta esta <b>pendiente de aprobacion</b>: aun no puedes usar el servidor del administrador. Mientras tanto puedes operar tus propios servidores con tu API key.</span>
+      <Link href="/settings" className="rounded-md border border-chart-3/50 px-2.5 py-1 text-xs font-medium hover:bg-chart-3/20">Usar mi API key</Link>
     </div>
   );
 }

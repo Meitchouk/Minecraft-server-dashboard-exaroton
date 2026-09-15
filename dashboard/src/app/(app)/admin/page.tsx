@@ -102,7 +102,7 @@ export default function AdminPage() {
           <Card className={cn(pending.length && "border-chart-3/40")}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Clock className="size-4 text-chart-3" />Pendientes de aprobacion {pending.length > 0 && <Badge variant="outline" className="border-chart-3/50 text-chart-3">{pending.length}</Badge>}</CardTitle>
-              <CardDescription>Cuentas registradas que aun no pueden entrar.</CardDescription>
+              <CardDescription>Cuentas registradas que pueden entrar al panel pero aun no usar tu servidor (tu API key).</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? <Skeleton className="h-16" /> : pending.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">No hay solicitudes pendientes.</p> : <ul className="space-y-2">{pending.map((u) => <Row key={u.username} u={u} />)}</ul>}
