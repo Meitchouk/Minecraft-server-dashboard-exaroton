@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Zap, Gift, FlaskConical, PawPrint, Star, MapPin, Backpack, History, Trash2, CheckCircle2, XCircle } from "lucide-react";
+import { Zap, Gift, FlaskConical, PawPrint, Star, MapPin, Backpack, Sparkles, History, Trash2, CheckCircle2, XCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { SummonCommand } from "./summon";
 import { Favorites } from "./favorites";
 import { TeleportCommand } from "./teleport";
 import { InventoryCommand } from "./inventory";
+import { ImprovementsTab } from "./improvements";
 
 function HistoryPanel() {
   const { history, clear, run } = useCommands();
@@ -71,6 +72,7 @@ export default function CommandsPage() {
             <TabsTrigger value="tp" className="gap-1.5"><MapPin className="size-4" />Teleport</TabsTrigger>
             <TabsTrigger value="effects" className="gap-1.5"><FlaskConical className="size-4" />Efectos</TabsTrigger>
             <TabsTrigger value="summon" className="gap-1.5"><PawPrint className="size-4" />Invocar</TabsTrigger>
+            <TabsTrigger value="improve" className="gap-1.5"><Sparkles className="size-4" />Mejoras</TabsTrigger>
             <TabsTrigger value="favs" className="gap-1.5"><Star className="size-4" />Favoritos</TabsTrigger>
           </TabsList>
           <TabsContent value="quick"><QuickCommands players={players} /></TabsContent>
@@ -79,6 +81,7 @@ export default function CommandsPage() {
           <TabsContent value="tp"><TeleportCommand players={players} /></TabsContent>
           <TabsContent value="effects"><EffectsCommand catalog={catalog} loading={catLoading} players={players} /></TabsContent>
           <TabsContent value="summon"><SummonCommand catalog={catalog} loading={catLoading} players={players} /></TabsContent>
+          <TabsContent value="improve"><ImprovementsTab /></TabsContent>
           <TabsContent value="favs"><Favorites players={players} /></TabsContent>
         </Tabs>
 

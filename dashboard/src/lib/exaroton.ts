@@ -173,3 +173,41 @@ export function queryConsole(id: string, commands: string | string[], match: Reg
     });
   });
 }
+
+// Variante que ejecuta varios comandos y devuelve TODAS las lineas de salida (sin ecos) recibidas hasta
+// `settleMs` despues del ultimo comando. Util para leer varios estados de golpe (gamerules, objetivos...).
+export function queryConsoleLines(id: string, commands: string[], settleMs = 1500, timeoutMs = 12000): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://api.exaroton.com/v1/servers/${id}/websocket`, { headers: { Authorization: `Bearer ${token()}` } });
+    const lines: string[] = [];
+    let done = false;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const finish = (err?: Error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer); if (settle) clearTimeout(settle);
+      try { ws.close(); } catch {}
+      if (err) reject(err); else resolve(lines);
+    };
+    const timer = setTimeout(() => finish(), timeoutMs);
+    ws.on("error", (e) => finish(new ExarotonError(`WebSocket: ${e.message}`, 502)));
+    let idx = 0;
+    const sendNext = () => {
+      if (done) return;
+      if (idx >= commands.length) { settle = setTimeout(() => finish(), settleMs); return; }
+      ws.send(JSON.stringify({ stream: "console", type: "command", data: commands[idx++] }));
+      setTimeout(sendNext, 250);
+    };
+    ws.on("message", (raw) => {
+      let msg: { type: string; stream?: string; data?: unknown };
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+      if (msg.type === "ready") ws.send(JSON.stringify({ stream: "console", type: "start", data: { tail: 0 } }));
+      else if (msg.stream === "console" && msg.type === "started") sendNext();
+      else if (msg.stream === "console" && msg.type === "line") {
+        const line = String(msg.data).trimEnd();
+        if (commands.some((c) => line === c || line.endsWith(`: ${c}`))) return;
+        lines.push(line.replace(/^[[^]]*] [[^]]*]: /, ""));
+      } else if (msg.type === "disconnected") finish(new ExarotonError(`Consola desconectada: ${msg.data}`, 502));
+    });
+  });
+}

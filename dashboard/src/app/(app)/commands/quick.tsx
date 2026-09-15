@@ -39,7 +39,6 @@ const GROUPS: { title: string; desc: string; icon: React.ElementType; needsTarge
     { label: "keepInventory ON", cmd: "gamerule keep_inventory true", variant: "outline" }, { label: "keepInventory OFF", cmd: "gamerule keep_inventory false", variant: "outline" },
     { label: "mobGriefing ON", cmd: "gamerule mob_griefing true", variant: "outline" }, { label: "mobGriefing OFF", cmd: "gamerule mob_griefing false", variant: "outline" },
     { label: "PvP ON", cmd: "gamerule pvp true", icon: Swords, variant: "outline" }, { label: "PvP OFF", cmd: "gamerule pvp false", icon: Swords, variant: "outline" },
-    { label: "Fuego se extiende OFF", cmd: "gamerule fire_spread_radius_around_player 0", variant: "outline" }, { label: "Fuego se extiende ON", cmd: "gamerule fire_spread_radius_around_player 128", variant: "outline" },
     { label: "Phantoms OFF", cmd: "gamerule spawn_phantoms false", variant: "outline" }, { label: "Phantoms ON", cmd: "gamerule spawn_phantoms true", variant: "outline" },
     { label: "Mobs spawn OFF", cmd: "gamerule spawn_mobs false", variant: "outline" }, { label: "Mobs spawn ON", cmd: "gamerule spawn_mobs true", variant: "outline" },
     { label: "Ver semilla", cmd: "seed", icon: Flag, variant: "outline" },
