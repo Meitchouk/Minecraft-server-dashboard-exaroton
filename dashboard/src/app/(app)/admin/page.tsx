@@ -12,6 +12,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
 import { usePoll } from "@/hooks/use-server";
 import { apiFetch } from "@/lib/client";
@@ -211,16 +212,27 @@ function AuditHistory() {
     const el = document.createElement("a"); el.href = url; el.download = `auditoria-${new Date().toISOString().slice(0, 10)}.csv`; el.click(); URL.revokeObjectURL(url);
   };
 
-  const sel = "h-8 rounded-lg border bg-transparent px-2 text-xs";
+  const sourceItems: Record<string, string> = { "": "Todos los usuarios", ...Object.fromEntries(sources.map((s) => [s, s])) };
+  const kindItems: Record<string, string> = { "": "Todos los tipos", ...KINDS };
+  const limitItems: Record<string, string> = Object.fromEntries([100, 500, 1000, 5000].map((n) => [String(n), `${n} filas`]));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} placeholder="Buscar en comandos y resultados…" className="h-8 pl-8 text-xs" /></div>
-        <select value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })} className={sel}><option value="">Todos los usuarios</option>{sources.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-        <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={sel}><option value="">Todos los tipos</option>{Object.entries(KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        <Select value={f.source} onValueChange={(v) => setF({ ...f, source: v ?? "" })} items={sourceItems}>
+          <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>{Object.entries(sourceItems).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={f.kind} onValueChange={(v) => setF({ ...f, kind: v ?? "" })} items={kindItems}>
+          <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>{Object.entries(kindItems).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+        </Select>
         <Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} className="h-8 w-36 text-xs" title="Desde" />
         <Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className="h-8 w-36 text-xs" title="Hasta" />
-        <select value={f.limit} onChange={(e) => setF({ ...f, limit: Number(e.target.value) })} className={sel}>{[100, 500, 1000, 5000].map((n) => <option key={n} value={n}>{n} filas</option>)}</select>
+        <Select value={String(f.limit)} onValueChange={(v) => setF({ ...f, limit: Number(v) })} items={limitItems}>
+          <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>{Object.entries(limitItems).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+        </Select>
         <Button size="sm" variant="outline" onClick={() => setF(EMPTY_FILTER)}>Limpiar</Button>
         <Button size="sm" variant="outline" onClick={exportCsv} disabled={!rows?.length}><Download />CSV</Button>
       </div>
