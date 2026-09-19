@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { ShieldCheck, UserCheck, UserX, Trash2, KeyRound, Plus, Clock, Crown, User as UserIcon, ScrollText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ShieldCheck, UserCheck, UserX, Trash2, KeyRound, Plus, Clock, Crown, User as UserIcon, ScrollText, Maximize2, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,14 @@ import { useMe } from "@/hooks/use-me";
 import { cn } from "@/lib/utils";
 
 type User = { username: string; role: "admin" | "user"; approved: boolean; createdAt: number; approvedAt?: number | null; approvedBy?: string | null; lastLogin?: number | null };
-type Audit = { at: number; serverId: string; kind: string; command: string; source?: string };
+type Audit = { at: number; serverId: string; kind: string; command: string; result?: string; source?: string };
 
 const fmt = (t?: number | null) => (t ? new Date(t).toLocaleString() : "—");
 
 export default function AdminPage() {
   const me = useMe();
   const { data: users, loading, refresh, setData } = usePoll(() => apiFetch<User[]>("/api/admin/users"), 30000);
-  const { data: audit, refresh: refreshAudit } = usePoll(() => apiFetch<Audit[]>("/api/audit?limit=60&all=1"), 30000);
+  const { data: audit, refresh: refreshAudit } = usePoll(() => apiFetch<Audit[]>("/api/audit?limit=300&all=1"), 30000);
   const [busy, setBusy] = useState<string | null>(null);
   const [nu, setNu] = useState({ username: "", password: "", role: "user" as "user" | "admin" });
   const [pw, setPw] = useState<Record<string, string>>({});
@@ -135,21 +135,112 @@ export default function AdminPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ScrollText className="size-4 text-primary" />Auditoria reciente</CardTitle><CardDescription>Quien ejecuto que.</CardDescription></CardHeader>
+            <CardHeader className="flex flex-row items-start justify-between gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base"><ScrollText className="size-4 text-primary" />Auditoria reciente</CardTitle>
+                <CardDescription>Quien ejecuto que.</CardDescription>
+              </div>
+              <Dialog>
+                <DialogTrigger render={<Button variant="ghost" size="icon" title="Ampliar" />}><Maximize2 /></DialogTrigger>
+                <DialogContent className="flex h-[90vh] w-[95vw] max-w-[95vw] flex-col sm:max-w-[95vw]">
+                  <DialogHeader><DialogTitle className="flex items-center gap-2"><ScrollText className="size-4 text-primary" />Historico de auditoria</DialogTitle><DialogDescription>Todo lo ejecutado desde el panel, guardado en Firestore. Filtra por usuario, tipo, fecha o texto.</DialogDescription></DialogHeader>
+                  <AuditHistory />
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
             <CardContent>
-              <ul className="max-h-96 space-y-1 overflow-auto pr-1 font-mono text-[11px]">
-                {(audit ?? []).map((a, i) => (
-                  <li key={i} className="flex gap-2 border-b border-border/50 py-1 last:border-0">
-                    <span className="shrink-0 text-muted-foreground">{new Date(a.at).toLocaleTimeString()}</span>
-                    <span className="shrink-0 text-primary">{a.source ?? "?"}</span>
-                    <span className="truncate" title={a.command}>{a.command}</span>
-                  </li>
-                ))}
-                {audit && audit.length === 0 && <li className="text-muted-foreground">Sin registros.</li>}
-              </ul>
+              <AuditList audit={audit} />
             </CardContent>
           </Card>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Lista de auditoria; en modo expandido ocupa toda la altura y muestra el comando completo con salto de linea
+function AuditList({ audit }: { audit: Audit[] | null | undefined }) {
+  return (
+    <ul className="max-h-96 space-y-1 overflow-auto pr-1 font-mono text-[11px]">
+      {(audit ?? []).map((a, i) => (
+        <li key={i} className="flex gap-3 border-b border-border/50 py-1 last:border-0">
+          <span className="shrink-0 text-muted-foreground">{new Date(a.at).toLocaleTimeString()}</span>
+          <span className="w-16 shrink-0 truncate text-primary" title={a.source ?? "?"}>{a.source ?? "?"}</span>
+          <span className="truncate" title={a.command}>{a.command}</span>
+        </li>
+      ))}
+      {audit && audit.length === 0 && <li className="text-muted-foreground">Sin registros.</li>}
+    </ul>
+  );
+}
+
+const KINDS: Record<string, string> = { command: "Comando", query: "Consulta", action: "Accion" };
+const EMPTY_FILTER = { source: "", kind: "", from: "", to: "", text: "", limit: 500 };
+
+// Historico completo con filtros (usuario, tipo, rango de fechas, texto) consultado al servidor
+function AuditHistory() {
+  const [f, setF] = useState(EMPTY_FILTER);
+  const [rows, setRows] = useState<Audit[] | null>(null);
+  const [sources, setSources] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { apiFetch<string[]>("/api/audit?sources=1").then(setSources).catch(() => setSources([])); }, []);
+
+  // Consulta con pequeño retraso para no disparar por cada tecla
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const p = new URLSearchParams({ all: "1", limit: String(f.limit) });
+        if (f.source) p.set("source", f.source);
+        if (f.kind) p.set("kind", f.kind);
+        if (f.text) p.set("text", f.text);
+        if (f.from) p.set("from", String(new Date(f.from).getTime()));
+        if (f.to) p.set("to", String(new Date(f.to).getTime() + 86_399_999));
+        setRows(await apiFetch<Audit[]>(`/api/audit?${p}`));
+      } catch (e) { toast.error((e as Error).message); }
+      finally { setBusy(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [f]);
+
+  const exportCsv = () => {
+    const esc = (v: string) => '"' + v.replace(/"/g, '""') + '"';
+    const csv = ["fecha,usuario,tipo,comando,resultado", ...(rows ?? []).map((a) => [new Date(a.at).toISOString(), a.source ?? "?", a.kind, a.command, a.result ?? ""].map(esc).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const el = document.createElement("a"); el.href = url; el.download = `auditoria-${new Date().toISOString().slice(0, 10)}.csv`; el.click(); URL.revokeObjectURL(url);
+  };
+
+  const sel = "h-8 rounded-lg border bg-transparent px-2 text-xs";
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-48 flex-1"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} placeholder="Buscar en comandos y resultados…" className="h-8 pl-8 text-xs" /></div>
+        <select value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })} className={sel}><option value="">Todos los usuarios</option>{sources.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={sel}><option value="">Todos los tipos</option>{Object.entries(KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        <Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} className="h-8 w-36 text-xs" title="Desde" />
+        <Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className="h-8 w-36 text-xs" title="Hasta" />
+        <select value={f.limit} onChange={(e) => setF({ ...f, limit: Number(e.target.value) })} className={sel}>{[100, 500, 1000, 5000].map((n) => <option key={n} value={n}>{n} filas</option>)}</select>
+        <Button size="sm" variant="outline" onClick={() => setF(EMPTY_FILTER)}>Limpiar</Button>
+        <Button size="sm" variant="outline" onClick={exportCsv} disabled={!rows?.length}><Download />CSV</Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">{busy ? "Consultando…" : rows ? `${rows.length} registro${rows.length === 1 ? "" : "s"}${rows.length >= f.limit ? " (limite alcanzado, acota los filtros)" : ""}` : ""}</p>
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-card text-left text-[11px] text-muted-foreground"><tr><th className="px-2 py-1.5 font-medium">Fecha</th><th className="px-2 py-1.5 font-medium">Usuario</th><th className="px-2 py-1.5 font-medium">Tipo</th><th className="px-2 py-1.5 font-medium">Comando</th><th className="px-2 py-1.5 font-medium">Resultado</th></tr></thead>
+          <tbody className="font-mono">
+            {(rows ?? []).map((a, i) => (
+              <tr key={i} className="border-t border-border/50 align-top hover:bg-muted/30">
+                <td className="whitespace-nowrap px-2 py-1 text-muted-foreground">{new Date(a.at).toLocaleString()}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-primary">{a.source ?? "?"}</td>
+                <td className="whitespace-nowrap px-2 py-1"><Badge variant="outline" className="text-[10px]">{KINDS[a.kind] ?? a.kind}</Badge></td>
+                <td className="whitespace-pre-wrap break-all px-2 py-1">{a.command}</td>
+                <td className="max-w-64 whitespace-pre-wrap break-all px-2 py-1 text-muted-foreground">{a.result ?? ""}</td>
+              </tr>
+            ))}
+            {rows && rows.length === 0 && <tr><td colSpan={5} className="px-2 py-6 text-center text-muted-foreground">Sin registros con esos filtros.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );
