@@ -36,7 +36,7 @@ export function buildGive(o: GiveOpts) {
     const plainName = versionAtLeast(o.version, "1.21.5");
     const parts: string[] = [];
     if (enchEntries.length) parts.push(`enchantments={${enchEntries.map(([k, l]) => `"minecraft:${k}":${l}`).join(",")}}`);
-    if (o.potion) parts.push(`potion_contents=minecraft:${o.potion}`);
+    if (o.potion) parts.push(`potion_contents="minecraft:${o.potion}"`);
     if (name) parts.push(plainName ? `custom_name="${esc(name)}"` : `custom_name='{"text":"${esc(name)}"}'`);
     if (o.unbreakable) parts.push("unbreakable={}");
     return `give ${o.target.trim()} ${id}${parts.length ? `[${parts.join(",")}]` : ""} ${o.amount}`;
