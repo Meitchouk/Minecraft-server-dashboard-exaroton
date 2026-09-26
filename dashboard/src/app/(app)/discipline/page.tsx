@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Gavel, Trophy, Skull, Flame, EyeOff, Snail, Frown, Utensils, ArrowUp, Lock, Ban, UserX, Eraser, ShieldMinus, Ghost, Mountain, Sparkles, Gem, Apple, Heart, Zap, PartyPopper, Megaphone, ShieldPlus, Coins, ScrollText, AlertTriangle, Anchor, Snowflake, Bird, Drama, Beef, Pickaxe, Wind, Crown, ArrowDownToLine, Volume2, Rabbit, Sun } from "lucide-react";
+import { Gavel, Bomb, Trophy, Skull, Flame, EyeOff, Snail, Frown, Utensils, ArrowUp, Lock, Ban, UserX, Eraser, ShieldMinus, Ghost, Mountain, Sparkles, Gem, Apple, Heart, Zap, PartyPopper, Megaphone, ShieldPlus, Coins, ScrollText, AlertTriangle, Anchor, Snowflake, Bird, Drama, Beef, Pickaxe, Wind, Crown, ArrowDownToLine, Volume2, Rabbit, Sun } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,7 @@ import { isDangerousCommand } from "@/lib/permissions";
 import { AdminBadge } from "@/components/admin-only";
 
 // {t} = objetivo, {m} = motivo/mensaje escrito por el admin
-type Tier = "leve" | "medio" | "grave" | "pequeno" | "especial";
+type Tier = "leve" | "medio" | "grave" | "pequeno" | "especial" | "sonido" | "broma";
 type Action = { label: string; desc: string; icon: React.ElementType; cmds: string[]; danger?: boolean; confirm?: boolean; needsMsg?: boolean; tier: Tier };
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -59,6 +59,31 @@ const PUNISH: Action[] = [
   { tier: "grave", label: "Banear", desc: "Ban permanente con motivo (se quita en Jugadores)", icon: Ban, danger: true, confirm: true, needsMsg: true, cmds: ["ban {t} {m}"] },
 ];
 
+
+// Bromas: inofensivas, no quitan vida ni objetos y se pasan solas
+const PRANKS: Action[] = [
+  // ---- sonidos: solo los oye el objetivo ----
+  { tier: "sonido", label: "Creeper a punto", desc: "Siseo de creeper justo detras", icon: Bomb, cmds: ["execute at {t} rotated as {t} run playsound minecraft:entity.creeper.primed hostile {t} ^ ^ ^-3 1 1"] },
+  { tier: "sonido", label: "Warden", desc: "El Warden emerge a su lado", icon: Ghost, cmds: ["execute at {t} run playsound minecraft:entity.warden.emerge hostile {t} ~ ~ ~ 1 1", "execute at {t} run playsound minecraft:entity.warden.heartbeat hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "sonido", label: "Explosion", desc: "Estruendo de TNT (sin explosion real)", icon: Flame, cmds: ["execute at {t} run playsound minecraft:entity.generic.explode hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "sonido", label: "Enderman", desc: "Grito de enderman enfadado detras", icon: EyeOff, cmds: ["execute at {t} rotated as {t} run playsound minecraft:entity.enderman.scream hostile {t} ^ ^ ^-3 1 1", "execute at {t} run playsound minecraft:entity.enderman.teleport hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "sonido", label: "Ghast", desc: "Chillido de ghast lejano", icon: Frown, cmds: ["execute at {t} run playsound minecraft:entity.ghast.scream hostile {t} ~ ~ ~ 1 0.8"] },
+  { tier: "sonido", label: "Cueva", desc: "Ruido ambiental de cueva (el clasico)", icon: Mountain, cmds: ["execute at {t} run playsound minecraft:ambient.cave hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "sonido", label: "Pasos de zombi", desc: "Gruñido de zombi y golpe en la puerta", icon: Drama, cmds: ["execute at {t} rotated as {t} run playsound minecraft:entity.zombie.ambient hostile {t} ^ ^ ^-3 1 1", "execute at {t} run playsound minecraft:entity.zombie.attack_wooden_door hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "sonido", label: "Elder guardian", desc: "Maldicion del guardian (sonido + imagen, sin efecto)", icon: Skull, cmds: ["execute at {t} run playsound minecraft:entity.elder_guardian.curse hostile {t} ~ ~ ~ 1 1", "particle minecraft:elder_guardian ~ ~ ~ 0 0 0 0 1 force {t}"] },
+  { tier: "sonido", label: "Raid", desc: "Cuerno de asalto de illagers", icon: Megaphone, cmds: ["execute at {t} run playsound minecraft:event.raid.horn hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "sonido", label: "Wither", desc: "Rugido de spawn del Wither", icon: Skull, cmds: ["execute at {t} run playsound minecraft:entity.wither.spawn hostile {t} ~ ~ ~ 0.6 1"] },
+  { tier: "sonido", label: "Totem", desc: "Suena y se ve un totem salvandolo (sin gastar nada)", icon: Sparkles, cmds: ["execute at {t} run playsound minecraft:item.totem.use hostile {t} ~ ~ ~ 1 1", "particle minecraft:totem_of_undying ~ ~1 ~ 0.5 1 0.5 0.5 60 force {t}"] },
+  // ---- bromas: molestan un rato, sin daño ----
+  { tier: "broma", label: "Mareo", desc: "Nauseas 30 s", icon: Frown, cmds: ["effect give {t} minecraft:nausea 30 0 true"] },
+  { tier: "broma", label: "Lento", desc: "Lentitud IV 30 s", icon: Snail, cmds: ["effect give {t} minecraft:slowness 30 3 true"] },
+  { tier: "broma", label: "Saltito", desc: "Levitacion 4 s con caida lenta (no muere)", icon: ArrowUp, cmds: ["effect give {t} minecraft:levitation 4 1 true", "effect give {t} minecraft:slow_falling 20 0 true"] },
+  { tier: "broma", label: "A oscuras", desc: "Ceguera + fatiga de minero 20 s", icon: EyeOff, cmds: ["effect give {t} minecraft:blindness 20 0 true", "effect give {t} minecraft:mining_fatigue 20 4 true"] },
+  { tier: "broma", label: "Te vigilan", desc: "Titulo inquietante en pantalla + latido", icon: AlertTriangle, cmds: ["title {t} times 10 60 20", 'title {t} title {"text":"Te estan vigilando...","color":"dark_red","bold":true}', "execute at {t} run playsound minecraft:entity.warden.heartbeat hostile {t} ~ ~ ~ 1 1"] },
+  { tier: "broma", label: "Gallinas", desc: "6 gallinas a su alrededor", icon: Bird, cmds: Array.from({ length: 6 }, (_, i) => `execute at {t} run summon minecraft:chicken ~${(i % 3) - 1} ~ ~${Math.floor(i / 3) * 2 - 1}`) },
+  { tier: "broma", label: "Quitar todo", desc: "Limpia todos sus efectos (deshace las bromas)", icon: Heart, cmds: ["effect clear {t}"] },
+];
+
 // Premios moderados: nada que rompa la progresion de un survival
 const REWARD: Action[] = [
   // ---- pequeños: reconocimiento y detalles ----
@@ -91,20 +116,22 @@ const TIERS: Record<Tier, { label: string; desc: string }> = {
   grave: { label: "Graves", desc: "Irreversibles o de acceso: piden confirmacion" },
   pequeno: { label: "Pequeños", desc: "Reconocimiento y detalles que no alteran el juego" },
   especial: { label: "Especiales", desc: "Valen algo, pero nada que no se consiga jugando un rato" },
+  sonido: { label: "Sonidos", desc: "Solo los oye el jugador elegido; sin mobs ni daño" },
+  broma: { label: "Molestias", desc: "Efectos cortos, sin daño ni perdida de objetos" },
 };
 
-function Group({ list, tier, target, msg, tone }: { list: Action[]; tier: Tier; target: string; msg: string; tone: "bad" | "good" }) {
+function Group({ list, tier, target, msg, tone }: { list: Action[]; tier: Tier; target: string; msg: string; tone: "bad" | "good" | "fun" }) {
   const items = list.filter((a) => a.tier === tier);
   if (!items.length) return null;
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline gap-2"><span className={cn("text-xs font-semibold uppercase tracking-wider", tone === "bad" ? "text-destructive" : "text-primary")}>{TIERS[tier].label}</span><span className="text-[11px] text-muted-foreground">{TIERS[tier].desc}</span></div>
+      <div className="flex items-baseline gap-2"><span className={cn("text-xs font-semibold uppercase tracking-wider", tone === "bad" ? "text-destructive" : tone === "fun" ? "text-chart-4" : "text-primary")}>{TIERS[tier].label}</span><span className="text-[11px] text-muted-foreground">{TIERS[tier].desc}</span></div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">{items.map((a) => <ActionButton key={a.label} a={a} target={target} msg={msg} tone={tone} />)}</div>
     </div>
   );
 }
 
-function ActionButton({ a, target, msg, tone }: { a: Action; target: string; msg: string; tone: "bad" | "good" }) {
+function ActionButton({ a, target, msg, tone }: { a: Action; target: string; msg: string; tone: "bad" | "good" | "fun" }) {
   const { run, online, running } = useCommands();
   const perms = usePermissions();
   const resolved = a.cmds.map((c) => c.replaceAll("{t}", target.trim() || "x").replaceAll("{m}", msg.trim() || "x"));
@@ -116,7 +143,7 @@ function ActionButton({ a, target, msg, tone }: { a: Action; target: string; msg
   const btn = (
     <button disabled={!online || running || !ready} onClick={a.confirm ? undefined : exec}
       className={cn("group flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        tone === "bad" ? "hover:border-destructive/50 hover:bg-destructive/10" : "hover:border-primary/50 hover:bg-primary/10",
+        tone === "bad" ? "hover:border-destructive/50 hover:bg-destructive/10" : tone === "fun" ? "hover:border-chart-4/50 hover:bg-chart-4/10" : "hover:border-primary/50 hover:bg-primary/10",
         a.danger && "border-destructive/30")}>
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-md", tone === "bad" ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary")}><a.icon className="size-4" /></span>
       <span className="min-w-0 flex-1">
@@ -192,6 +219,16 @@ function Board() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-chart-4/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-chart-4"><Drama className="size-4" />Bromas</CardTitle>
+          <CardDescription>Para divertirse entre amigos: sustos con sonido y molestias cortas. Nadie pierde vida ni objetos.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-5 lg:grid-cols-2">
+          {(["sonido", "broma"] as Tier[]).map((t) => <Group key={t} list={PRANKS} tier={t} target={target} msg={msg} tone="fun" />)}
+        </CardContent>
+      </Card>
     </div>
   );
 }
