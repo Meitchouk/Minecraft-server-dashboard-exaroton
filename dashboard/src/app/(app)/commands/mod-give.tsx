@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { Search, Gift, Copy, Package, Puzzle, ExternalLink, BookOpen, Minus, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, Gift, Copy, Package, Puzzle, ExternalLink, BookOpen, Minus, Plus, Sparkles, Wand2, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TargetPicker } from "@/components/target-picker";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { EnchRow } from "./give";
+import { useModCatalog, enchantsFor, bestEnchants, type Mod, type ModItem, type ModEnchant } from "@/hooks/use-mod-catalog";
 import { useCommands } from "@/components/command-runner";
 import { cn } from "@/lib/utils";
 
-type ModItem = { id: string; en: string; es?: string; icon?: string };
-type Mod = { id: string; name: string; title?: string; version: string; description: string; homepage: string | null; modrinth?: string; wiki?: string | null; icon_url?: string | null; items: ModItem[] };
-type Index = { generated: string; mods: Mod[] };
 
 const PAGE = 150;
 const itemLabel = (i: ModItem) => i.es ?? i.en;
@@ -28,8 +29,11 @@ function Icon({ src, className }: { src?: string; className?: string }) {
 // Give de items de mods: catalogo generado desde los jars del servidor (scripts/mod-items.mjs)
 export function ModGiveCommand({ players }: { players: string[] }) {
   const { run, online, running } = useCommands();
-  const [data, setData] = useState<Index | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error } = useModCatalog();
+  const [ench, setEnch] = useState<Record<string, number>>({});
+  const [enchQ, setEnchQ] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [asBook, setAsBook] = useState(false);
   const [mod, setMod] = useState<string>("all");
   const [modQ, setModQ] = useState("");
   const [q, setQ] = useState("");
@@ -38,9 +42,6 @@ export function ModGiveCommand({ players }: { players: string[] }) {
   const [target, setTarget] = useState("@p");
   const [amount, setAmount] = useState(1);
 
-  useEffect(() => {
-    fetch("/mod-items/index.json").then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))).then(setData).catch((e) => setError((e as Error).message));
-  }, []);
 
   const mods = useMemo(() => {
     const s = modQ.trim().toLowerCase();
@@ -57,7 +58,25 @@ export function ModGiveCommand({ players }: { players: string[] }) {
 
   const current = data?.mods.find((m) => m.id === mod) ?? null;
   const total = data?.mods.reduce((n, m) => n + m.items.length, 0) ?? 0;
-  const command = item ? `give ${target.trim() || "@p"} ${item.id} ${amount}` : "";
+  // Encantamientos: los que aplican al item (vanilla + mods), el resto bajo "ver todos"
+  const compatible = useMemo(() => (item ? enchantsFor(data, item.id) : []), [data, item]);
+  const enchGroups = useMemo(() => {
+    const n = enchQ.trim().toLowerCase();
+    const ok = (e: ModEnchant) => !n || e.id.includes(n) || e.en.toLowerCase().includes(n) || (e.es ?? "").toLowerCase().includes(n);
+    const ids = new Set(compatible.map((e) => e.id));
+    const byName = (a: ModEnchant, b: ModEnchant) => (a.es ?? a.en).localeCompare(b.es ?? b.en);
+    return { compatible: compatible.filter(ok).sort(byName), others: (data?.enchantments ?? []).filter((e) => !ids.has(e.id) && ok(e)).sort(byName) };
+  }, [data, compatible, enchQ]);
+  const enchList = Object.entries(ench).filter(([, l]) => l > 0);
+  const conflicts = useMemo(() => {
+    const all = new Map((data?.enchantments ?? []).map((e) => [e.id, e]));
+    const chosen = enchList.map(([k]) => k);
+    return chosen.filter((k) => (all.get(k)?.ex ?? []).some((x) => chosen.includes(x)));
+  }, [data, enchList]);
+  const comp = enchList.length ? `[${asBook ? "stored_enchantments" : "enchantments"}={${enchList.map(([k, l]) => `"${k}":${l}`).join(",")}}]` : "";
+  const giveId = asBook && enchList.length ? "minecraft:enchanted_book" : item?.id;
+  const command = item ? `give ${target.trim() || "@p"} ${giveId}${comp} ${amount}` : "";
+  const row = (e: ModEnchant) => <EnchRow key={e.id} e={{ name: e.id, displayName: e.en, maxLevel: e.max, es: e.es ?? null, rec: false, mod: e.mod }} lvl={ench[e.id] ?? 0} set={(v) => setEnch((s) => ({ ...s, [e.id]: v }))} />;
 
   const give = async () => {
     if (!command) return;
@@ -124,7 +143,7 @@ export function ModGiveCommand({ players }: { players: string[] }) {
           <p className="text-[11px] text-muted-foreground">{items.length.toLocaleString()} items</p>
           <div className="grid max-h-[56vh] gap-1.5 overflow-auto pr-1 sm:grid-cols-2">
             {items.slice(0, limit).map((i) => (
-              <button key={i.id} onClick={() => setItem(i)}
+              <button key={i.id} onClick={() => { setItem(i); setEnch({}); setAsBook(false); setShowAll(false); }}
                 className={cn("flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-sm transition-colors hover:border-primary/40 hover:bg-primary/5", item?.id === i.id && "border-primary bg-primary/10")}>
                 <Icon src={i.icon} className="size-6" />
                 <span className="min-w-0 flex-1">
@@ -159,7 +178,39 @@ export function ModGiveCommand({ players }: { players: string[] }) {
             </div>
             <div className="mt-1.5 flex gap-1">{[1, 16, 32, 64].map((n) => <Button key={n} size="xs" variant={amount === n ? "default" : "secondary"} onClick={() => setAmount(n)}>{n}</Button>)}</div>
           </div>
-          {command && <pre className="overflow-x-auto rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs">/{command}</pre>}
+          {item && (
+            <div className="rounded-lg border">
+              <div className="flex items-center justify-between gap-2 px-3 py-2">
+                <span className="flex items-center gap-2 text-sm"><Sparkles className="size-4 text-primary" />Encantamientos {enchList.length > 0 && <Badge className="h-4 px-1 text-[10px]">{enchList.length}</Badge>}</span>
+                <div className="flex gap-1">
+                  {compatible.length > 0 && <Button size="xs" onClick={() => setEnch(bestEnchants(compatible))} title="Todos los compatibles al maximo, sin maldiciones ni conflictos"><Wand2 />Mejores</Button>}
+                  {enchList.length > 0 && <Button size="xs" variant="ghost" onClick={() => setEnch({})}><X /></Button>}
+                </div>
+              </div>
+              <div className="space-y-2 border-t p-3">
+                {compatible.length === 0 && <p className="text-xs text-muted-foreground">Este item no tiene encantamientos compatibles registrados; puedes forzar cualquiera desde &quot;ver todos&quot;.</p>}
+                <Input value={enchQ} onChange={(e) => setEnchQ(e.target.value)} placeholder="Buscar encantamiento…" className="h-8 text-xs" />
+                <div className="max-h-64 space-y-1 overflow-auto pr-1">
+                  {enchGroups.compatible.length > 0 && <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Compatibles ({enchGroups.compatible.length})</p>}
+                  {enchGroups.compatible.map(row)}
+                  {showAll || enchQ ? (
+                    <>
+                      <p className="px-2 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Otros (no aplican normalmente)</p>
+                      {enchGroups.others.map(row)}
+                    </>
+                  ) : <Button size="xs" variant="ghost" className="w-full" onClick={() => setShowAll(true)}>Ver todos ({enchGroups.others.length})</Button>}
+                </div>
+                {conflicts.length > 0 && <p className="flex items-start gap-1.5 text-[11px] text-chart-3"><AlertTriangle className="mt-0.5 size-3 shrink-0" />Incompatibles entre si: {conflicts.join(", ")}. Minecraft los acepta por comando, pero no se obtendrian jugando.</p>}
+                {enchList.length > 0 && (
+                  <div className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1.5 text-xs">
+                    <span>Dar como libro encantado</span>
+                    <Switch checked={asBook} onCheckedChange={setAsBook} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {command && <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs">/{command}</pre>}
           <div className="flex gap-2">
             <Button className="flex-1" onClick={give} disabled={!item || !online || running}><Gift />Dar</Button>
             <Button variant="outline" size="icon" disabled={!command} title="Copiar comando" onClick={() => { navigator.clipboard.writeText("/" + command); toast.success("Comando copiado"); }}><Copy /></Button>

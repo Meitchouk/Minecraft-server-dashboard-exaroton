@@ -16,6 +16,7 @@ import {
 import { useCommands } from "@/components/command-runner";
 import { CATEGORY_META, GEAR_ENCHANTS, KITS, gearType, label, loadLS, saveLS, versionAtLeast, type Catalog, type CatalogItem, type ItemCategory } from "@/hooks/use-catalog";
 import { useStore } from "@/hooks/use-store";
+import { useModCatalog, enchantsFor } from "@/hooks/use-mod-catalog";
 import { cn } from "@/lib/utils";
 
 const RECENT_KEY = "exaroton.give.recent";
@@ -35,14 +36,14 @@ export function buildGive(o: GiveOpts) {
   if (versionAtLeast(o.version, "1.20.5")) {
     const plainName = versionAtLeast(o.version, "1.21.5");
     const parts: string[] = [];
-    if (enchEntries.length) parts.push(`enchantments={${enchEntries.map(([k, l]) => `"minecraft:${k}":${l}`).join(",")}}`);
+    if (enchEntries.length) parts.push(`enchantments={${enchEntries.map(([k, l]) => `"${k.includes(":") ? k : `minecraft:${k}`}":${l}`).join(",")}}`);
     if (o.potion) parts.push(`potion_contents="minecraft:${o.potion}"`);
     if (name) parts.push(plainName ? `custom_name="${esc(name)}"` : `custom_name='{"text":"${esc(name)}"}'`);
     if (o.unbreakable) parts.push("unbreakable={}");
     return `give ${o.target.trim()} ${id}${parts.length ? `[${parts.join(",")}]` : ""} ${o.amount}`;
   }
   const nbt: string[] = [];
-  if (enchEntries.length) nbt.push(`Enchantments:[${enchEntries.map(([k, l]) => `{id:"minecraft:${k}",lvl:${l}s}`).join(",")}]`);
+  if (enchEntries.length) nbt.push(`Enchantments:[${enchEntries.map(([k, l]) => `{id:"${k.includes(":") ? k : `minecraft:${k}`}",lvl:${l}s}`).join(",")}]`);
   if (o.potion) nbt.push(`Potion:"minecraft:${o.potion}"`);
   if (name) nbt.push(`display:{Name:'{"text":"${esc(name)}"}'}`);
   if (o.unbreakable) nbt.push("Unbreakable:1b");
@@ -76,6 +77,7 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
   const custom = useMemo(() => customStore.items.map((c) => c.name), [customStore.items]);
   const [customInput, setCustomInput] = useState("");
   const [kitsUnlocked, setKitsUnlocked] = useState(false);
+  const { data: modCat } = useModCatalog();
 
   const version = catalog?.version ?? "1.21";
   const type = item ? gearType(item.name) : null;
@@ -96,19 +98,23 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
     return c;
   }, [catalog]);
 
-  // Encantamientos: compatibles con el item primero, el resto bajo "ver todos"
+  // Encantamientos: compatibles con el item primero, el resto bajo "ver todos". Incluye los de mods.
   const enchGroups = useMemo(() => {
-    const all = catalog?.enchantments ?? [];
+    const vanillaIds = new Set((catalog?.enchantments ?? []).map((e) => e.name));
+    const modded = (modCat?.enchantments ?? []).filter((e) => e.mod !== "Minecraft" && !vanillaIds.has(e.id.replace(/^minecraft:/, "")))
+      .map((e) => ({ name: e.id, displayName: e.en, maxLevel: e.max, es: e.es ?? null, mod: e.mod }));
+    const moddedFor = new Set(item ? enchantsFor(modCat, item.name.includes(":") ? item.name : `minecraft:${item.name}`).map((e) => e.id) : []);
+    const all = [...(catalog?.enchantments ?? []), ...modded];
     const n = enchQ.trim().toLowerCase();
     const match = (e: Catalog["enchantments"][number]) => !n || e.name.includes(n) || e.displayName.toLowerCase().includes(n) || (e.es ?? "").toLowerCase().includes(n);
-    const applicable = new Set(type ? GEAR_ENCHANTS[type].applicable : []);
+    const applicable = new Set<string>([...(type ? GEAR_ENCHANTS[type].applicable : []), ...moddedFor]);
     const rec = new Set(type ? GEAR_ENCHANTS[type].recommended : []);
     return {
       compatible: all.filter((e) => applicable.has(e.name) && match(e)).map((e) => ({ ...e, rec: rec.has(e.name) }))
         .sort((a, b) => Number(b.rec) - Number(a.rec) || label(a).localeCompare(label(b))),
       others: all.filter((e) => !applicable.has(e.name) && match(e)).map((e) => ({ ...e, rec: false })).sort((a, b) => label(a).localeCompare(label(b))),
     };
-  }, [catalog, enchQ, type]);
+  }, [catalog, enchQ, type, item, modCat]);
 
   const command = item ? buildGive({ item: item.name, amount, target, ench, name, unbreakable, potion: isPotion ? potion : null, version }) : "";
   const enchCount = Object.values(ench).filter(Boolean).length;
@@ -301,7 +307,7 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
                   {!type && <p className="text-xs text-muted-foreground">Este item no suele encantarse; aun asi puedes forzar cualquier encantamiento.</p>}
                   <Input value={enchQ} onChange={(e) => setEnchQ(e.target.value)} placeholder="Buscar encantamiento…" className="h-8 text-xs" />
                   <div className="max-h-64 space-y-1 overflow-auto pr-1">
-                    {type && enchGroups.compatible.length > 0 && (
+                    {enchGroups.compatible.length > 0 && (
                       <>
                         <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Compatibles con {label(item)}</p>
                         {enchGroups.compatible.map((e) => <EnchRow key={e.name} e={e} lvl={ench[e.name] ?? 0} set={(v) => setEnch((s) => ({ ...s, [e.name]: v }))} />)}
@@ -337,14 +343,15 @@ export function GiveCommand({ catalog, loading, players }: { catalog: Catalog | 
   );
 }
 
-type EnchEntry = Catalog["enchantments"][number] & { rec: boolean };
+export type EnchEntry = Catalog["enchantments"][number] & { rec: boolean; mod?: string };
 
-function EnchRow({ e, lvl, set }: { e: EnchEntry; lvl: number; set: (v: number) => void }) {
+export function EnchRow({ e, lvl, set }: { e: EnchEntry; lvl: number; set: (v: number) => void }) {
   return (
     <div className={cn("flex items-center gap-2 rounded-md px-2 py-1 text-xs", lvl > 0 && "bg-primary/10")}>
       <span className="min-w-0 flex-1 truncate">
         {label(e)}
         {e.rec && <Badge variant="outline" className="ml-1.5 h-4 border-primary/40 px-1 text-[9px] text-primary">rec.</Badge>}
+        {e.mod && e.mod !== "Minecraft" && <Badge variant="outline" className="ml-1.5 h-4 border-chart-4/40 px-1 text-[9px] text-chart-4" title={e.name}>{e.mod}</Badge>}
         <span className="ml-1 font-mono text-[10px] text-muted-foreground">max {e.maxLevel}</span>
       </span>
       <div className="flex items-center gap-0.5">

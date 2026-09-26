@@ -26,6 +26,30 @@ fs.mkdirSync(OUT, { recursive: true });
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "moditems-"));
 const mods = [];
 const hashes = {};
+// Encantamientos (data-driven desde 1.21): se recogen de todos los jars + vanilla para saber que aplica a cada item
+const itemTags = new Map();   // "ns:path" -> Set(valores)
+const enchTags = new Map();
+const enchants = new Map();   // "ns:id" -> { json, mod }
+const langEN = {}, langES = {};
+const walk = (dir, base = "") => fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => d.isDirectory() ? walk(path.join(dir, d.name), base + d.name + "/") : d.name.endsWith(".json") ? [[base + d.name.slice(0, -5), path.join(dir, d.name)]] : []) : [];
+function collectData(root, modName) {
+  const data = path.join(root, "data");
+  if (fs.existsSync(data)) for (const ns of fs.readdirSync(data)) {
+    for (const [kind, map] of [["item", itemTags], ["enchantment", enchTags]]) {
+      for (const [rel, file] of walk(path.join(data, ns, "tags", kind))) {
+        const j = readJson(file); if (!j?.values) continue;
+        const key = ns + ":" + rel; if (!map.has(key)) map.set(key, new Set());
+        for (const v of j.values) map.get(key).add(typeof v === "string" ? v : v.id);
+      }
+    }
+    for (const [rel, file] of walk(path.join(data, ns, "enchantment"))) { const j = readJson(file); if (j) enchants.set(ns + ":" + rel, { json: j, mod: modName }); }
+  }
+  const assets = path.join(root, "assets");
+  if (fs.existsSync(assets)) for (const ns of fs.readdirSync(assets)) {
+    Object.assign(langEN, readJson(path.join(assets, ns, "lang/en_us.json")) ?? {});
+    Object.assign(langES, readJson(path.join(assets, ns, "lang/es_es.json")) ?? {}, readJson(path.join(assets, ns, "lang/es_mx.json")) ?? {});
+  }
+}
 
 for (const jar of jars) {
   const tmp = path.join(tmpRoot, jar.replace(/[^\w.-]/g, "_"));
@@ -38,9 +62,10 @@ for (const jar of jars) {
   if (fs.existsSync(nested)) for (const n of fs.readdirSync(nested).filter((x) => /resources|assets/i.test(x) && x.endsWith(".jar"))) {
     try { execFileSync("unzip", ["-q", "-o", "-d", tmp, path.join(nested, n)], { stdio: "ignore" }); } catch { /* opcional */ }
   }
+  const meta = readJson(path.join(tmp, "fabric.mod.json")) ?? {};
+  collectData(tmp, meta.name ?? meta.id ?? jar);
   const assets = path.join(tmp, "assets");
   if (!fs.existsSync(assets)) { fs.rmSync(tmp, { recursive: true, force: true }); continue; }
-  const meta = readJson(path.join(tmp, "fabric.mod.json")) ?? {};
   const items = [];
   for (const ns of fs.readdirSync(assets)) {
     if (IGNORE_NS.has(ns)) continue;
@@ -113,8 +138,53 @@ try {
   }
 } catch (e) { console.warn("Modrinth no disponible:", e.message); }
 
+// ---- vanilla: tags, encantamientos y nombres (el cliente 26.2 + indice de assets para es_mx) ----
+const MC = process.env.MC_DIR || "C:/Users/User/curseforge/minecraft/Install";
+const MCV = process.env.MC_VERSION || "26.2";
+try {
+  const vtmp = path.join(tmpRoot, "_vanilla");
+  fs.mkdirSync(vtmp);
+  try { execFileSync("unzip", ["-q", "-o", "-d", vtmp, path.join(MC, "versions", MCV, MCV + ".jar")], { stdio: "ignore" }); } catch { /* parcial */ }
+  const vjson = readJson(path.join(MC, "versions", MCV, MCV + ".json"));
+  const idx = readJson(path.join(MC, "assets", "indexes", vjson.assetIndex.id + ".json"));
+  const h = idx.objects["minecraft/lang/es_mx.json"]?.hash;
+  if (h) { fs.mkdirSync(path.join(vtmp, "assets/minecraft/lang"), { recursive: true }); fs.copyFileSync(path.join(MC, "assets", "objects", h.slice(0, 2), h), path.join(vtmp, "assets/minecraft/lang/es_mx.json")); }
+  collectData(vtmp, "Minecraft");
+} catch (e) { console.warn("vanilla no disponible:", e.message); }
+
+const resolve = (ref, map, seen = new Set()) => {
+  const out = new Set();
+  for (const r of Array.isArray(ref) ? ref : [ref]) {
+    if (typeof r !== "string") continue;
+    if (r.startsWith("#")) { const t = r.slice(1); if (seen.has(t)) continue; seen.add(t); for (const v of map.get(t) ?? []) for (const x of resolve(v, map, seen)) out.add(x); }
+    else out.add(r.includes(":") ? r : "minecraft:" + r);
+  }
+  return out;
+};
+const text = (d) => (typeof d === "string" ? d : d?.translate ? langEN[d.translate] ?? d.fallback ?? d.translate : d?.text ?? "");
+const textES = (d) => (d?.translate ? langES[d.translate] : null);
+const enchantments = [];
+const coverage = [];
+for (const [id, { json, mod }] of [...enchants].sort((a, b) => a[0].localeCompare(b[0]))) {
+  const en = text(json.description) || id;
+  const es = textES(json.description);
+  enchantments.push({ id, en, ...(es && es !== en ? { es } : {}), max: json.max_level ?? 1, mod, ...(json.exclusive_set ? { ex: [...resolve(json.exclusive_set, enchTags)].filter((x) => x !== id) } : {}) });
+  coverage.push(resolve(json.supported_items ?? [], itemTags));
+}
+const modItemIds = new Set(mods.flatMap((m) => m.items.map((i) => i.id)));
+const itemEnch = {};
+enchantments.forEach((e, i) => {
+  for (const it of coverage[i]) {
+    const isMod = modItemIds.has(it);
+    if (!isMod && e.mod === "Minecraft") continue; // vanilla+vanilla ya lo cubre la pestaña Give normal
+    if (!isMod && !it.startsWith("minecraft:")) continue;
+    (itemEnch[it] ??= []).push(i);
+  }
+});
+
 mods.sort((a, b) => (a.title ?? a.name).localeCompare(b.title ?? b.name));
-fs.writeFileSync(path.join(OUT, "index.json"), JSON.stringify({ generated: new Date().toISOString(), mods }));
+fs.writeFileSync(path.join(OUT, "index.json"), JSON.stringify({ generated: new Date().toISOString(), mods, enchantments, itemEnch }));
+console.log(`${enchantments.length} encantamientos (${enchantments.filter((e) => e.mod !== "Minecraft").length} de mods), ${Object.keys(itemEnch).length} items con encantamientos`);
 fs.rmSync(tmpRoot, { recursive: true, force: true });
 const total = mods.reduce((n, m) => n + m.items.length, 0);
 const withIcon = mods.reduce((n, m) => n + m.items.filter((i) => i.icon).length, 0);
