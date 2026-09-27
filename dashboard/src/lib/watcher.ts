@@ -281,6 +281,28 @@ async function claim(key: string): Promise<boolean> {
     return true; // otro error de Firestore: mejor avisar que callar
   }
 }
+const WELCOME_COOLDOWN = 3 * 3600_000;
+const welcomedAt = new Map<string, number>();
+async function welcomeDue(player: string): Promise<boolean> {
+  const now = Date.now();
+  if (now - (welcomedAt.get(player) ?? 0) < WELCOME_COOLDOWN) return false;
+  const d = db();
+  if (d) {
+    try {
+      const ref = d.collection("servers").doc(defaultServerId()).collection("welcomed").doc(player);
+      const ok = await d.runTransaction(async (tx) => {
+        const cur = await tx.get(ref);
+        if (now - ((cur.data()?.at as number | undefined) ?? 0) < WELCOME_COOLDOWN) return false;
+        tx.set(ref, { at: now });
+        return true;
+      });
+      welcomedAt.set(player, ok ? now : welcomedAt.get(player) ?? now);
+      return ok;
+    } catch { /* sin Firestore: solo memoria */ }
+  }
+  welcomedAt.set(player, now);
+  return true;
+}
 // Clave estable para una linea de consola: su hora [hh:mm:ss] + texto sin el prefijo de hilo
 const lineKey = (scope: string, line: string) => `${scope}:${line.replace(/^(\[[^\]]*\]) \[[^\]]*\]: /, "$1 ").slice(0, 300)}`;
 
@@ -302,7 +324,9 @@ async function onLine(line: string) {
     await recordPresence({ at: Date.now(), player, type: "join" });
     await notifyJoin(player, first);
     const s = await settings();
-    if (s.welcome.enabled) setTimeout(() => {
+    // Las reconexiones (lag, cortes, "Disconnected" y volver a entrar) no deben repetir la bienvenida:
+    // como mucho una vez cada WELCOME_COOLDOWN por jugador (salvo su primera vez en el servidor).
+    if (s.welcome.enabled && (first || (await welcomeDue(player)))) setTimeout(() => {
       for (const c of welcomeCommands(s, player)) send(c);
       const chat = first && s.welcome.firstJoinChat ? s.welcome.firstJoinChat : s.welcome.chat;
       if (chat) send(`tellraw ${player} {"text":"${esc(fill(chat, player))}","color":"gray"}`);
