@@ -16,7 +16,7 @@ import { TargetPicker } from "@/components/target-picker";
 import { useCommands } from "@/components/command-runner";
 import { label, type Catalog, type CatalogItem } from "@/hooks/use-catalog";
 import { apiFetch } from "@/lib/client";
-import { parseInventory, type InvSlot } from "@/lib/snbt";
+import { type InvSlot } from "@/lib/snbt";
 import { buildGive, recommendedFor } from "./give";
 import { RecoveryCard } from "./recovery";
 import { BackupsCard } from "./backups";
@@ -34,14 +34,11 @@ const ARMOR: { slot: number; label: string }[] = [
 
 // Lee el inventario real por el WebSocket de consola: ejecuta `data get` y espera la linea de respuesta (~1-2 s)
 async function readInventory(player: string, before: string[] = []): Promise<InvSlot[] | null> {
-  const esc = player.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const { line } = await apiFetch<{ line: string | null }>("/api/server/query", {
-    method: "POST",
-    body: JSON.stringify({ commands: [...before, `data get entity ${player} Inventory`], match: `${esc} has the following entity data: \\[`, timeout: 10000 }),
-  });
-  const m = line?.trim().match(/has the following entity data: (\[.*)$/);
-  if (!m) return null;
-  try { return parseInventory(m[1].trim()); } catch (e) { toast.error("No se pudo interpretar el inventario", { description: (e as Error).message }); return null; }
+  try {
+    const r = await apiFetch<{ slots: InvSlot[]; source: "console" | "file" }>("/api/server/inventory", { method: "POST", body: JSON.stringify({ player, before }) });
+    if (r.source === "file") toast.info("Inventario leido del archivo del jugador", { description: "Tenia objetos con muchos datos y la consola los recortaba." });
+    return r.slots;
+  } catch (e) { toast.error("No se pudo leer el inventario", { description: (e as Error).message }); return null; }
 }
 
 export function InventoryCommand({ catalog, players }: { catalog: Catalog | null; players: string[] }) {

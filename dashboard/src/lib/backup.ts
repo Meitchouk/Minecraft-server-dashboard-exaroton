@@ -1,8 +1,9 @@
 import "server-only";
+import { readPlayerList } from "@/lib/player-inventory";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { api, queryConsole, defaultServerId } from "@/lib/exaroton";
-import { parseInventory, type InvSlot } from "@/lib/snbt";
+import { api, defaultServerId } from "@/lib/exaroton";
+import { type InvSlot } from "@/lib/snbt";
 import { db } from "@/lib/firebase";
 
 // Copias automaticas de inventarios: cada N minutos se lee el inventario y el cofre de Ender de todos los jugadores
@@ -49,11 +50,7 @@ const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
 const fileFor = (serverId: string, player: string) => path.join(DATA, "inventories", safe(serverId), `${safe(player)}.jsonl`);
 
 async function readEntityList(serverId: string, player: string, pathName: "Inventory" | "EnderItems"): Promise<InvSlot[] | null> {
-  const esc = player.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const line = await queryConsole(serverId, `data get entity ${player} ${pathName}`, new RegExp(`${esc} has the following entity data: \\[`), 10000);
-  const m = line?.match(/has the following entity data: (\[.*)$/);
-  if (!m) return null;
-  try { return parseInventory(m[1].trim()); } catch { return null; }
+  try { return (await readPlayerList(serverId, player, pathName))?.slots ?? null; } catch { return null; }
 }
 
 const sig = (l: InvSlot[]) => l.map((i) => `${i.slot}:${i.spec}:${i.count}`).sort().join("|");

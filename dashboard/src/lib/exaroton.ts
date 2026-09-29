@@ -52,6 +52,13 @@ async function request<T = unknown>(method: string, path: string, opts: Opts = {
 
 const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
 
+// Descarga binaria (p. ej. .dat de jugador en NBT comprimido)
+async function requestBinary(path: string): Promise<Buffer> {
+  const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token()}` }, cache: "no-store" });
+  if (!res.ok) throw new ExarotonError((await res.text()) || res.statusText, res.status);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 export const api = {
   account: () => request("GET", "/account/"),
   servers: () => request<ServerInfo[]>("GET", "/servers/"),
@@ -79,6 +86,7 @@ export const api = {
 
   fileInfo: (id: string, path: string) => request<FileInfo>("GET", `/servers/${id}/files/info/${enc(path)}`),
   fileRead: (id: string, path: string) => request<string>("GET", `/servers/${id}/files/data/${enc(path)}`, { text: true }),
+  fileReadBinary: (id: string, path: string) => requestBinary(`/servers/${id}/files/data/${enc(path)}`),
   fileWrite: (id: string, path: string, content: string | Buffer) =>
     request("PUT", `/servers/${id}/files/data/${enc(path)}`, { body: content, raw: true }),
   fileDelete: (id: string, path: string) => request("DELETE", `/servers/${id}/files/data/${enc(path)}`),
