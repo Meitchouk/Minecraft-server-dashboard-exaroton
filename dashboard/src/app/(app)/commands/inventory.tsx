@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Backpack, RefreshCw, Trash2, Plus, Search, Loader2, Shield, Hand, Sparkles, Eraser, CheckSquare, Square, Copy, Timer } from "lucide-react";
+import { Backpack, RefreshCw, Trash2, Plus, Search, Loader2, Shield, Hand, Sparkles, Eraser, CheckSquare, Square, Copy, Timer, LayoutGrid, List, Maximize2, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,8 @@ import { RecoveryCard } from "./recovery";
 import { BackupsCard } from "./backups";
 import { giveCmd, pushSnapshot, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
 import { useStore } from "@/hooks/use-store";
+import { useModCatalog, type ModCatalog } from "@/hooks/use-mod-catalog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 // Slots del inventario vanilla: 0-8 hotbar, 9-35 principal, 100-103 armadura (pies..cabeza), -106 mano secundaria
@@ -60,6 +62,12 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
   const [serverSnaps, setServerSnaps] = useState<{ at: number; items: InvSlot[]; ender: InvSlot[] }[]>([]);
   const loadServerSnaps = (who: string) => apiFetch<{ snapshots: { at: number; items: InvSlot[]; ender: InvSlot[] }[] }>(`/api/backup/snapshots?player=${encodeURIComponent(who)}`).then((r) => setServerSnaps(r.snapshots ?? [])).catch(() => {});
   const loadRef = useRef<() => void>(() => {});
+  // Vista: cuadricula (normal o grande) o lista detallada; ademas se puede abrir a pantalla completa
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [big, setBig] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const { data: modCat } = useModCatalog();
+  const look = useMemo(() => lookupFor(modCat), [modCat]);
 
   const byId = useMemo(() => new Map((catalog?.items ?? []).map((i) => [i.name, i])), [catalog]);
   const bySlot = useMemo(() => new Map((inv ?? []).map((s) => [s.slot, s])), [inv]);
@@ -100,7 +108,7 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
 
   const selectedSlots = useMemo(() => [...sel].filter((s) => bySlot.has(s)).sort((a, b) => a - b), [sel, bySlot]);
   const selectedItems = selectedSlots.map((s) => bySlot.get(s)!);
-  const nameOf = (it: InvSlot) => it.name ?? (byId.get(it.id) ? label(byId.get(it.id)!) : it.id);
+  const nameOf = (it: InvSlot) => it.name ?? (byId.get(it.id) ? label(byId.get(it.id)!) : look.item.get(it.id)?.name ?? it.id);
 
   const toggle = (slot: number) => setSel((s) => { const n = new Set(s); if (n.has(slot)) n.delete(slot); else n.add(slot); return n; });
   const selectAll = () => setSel(new Set((inv ?? []).map((s) => s.slot)));
@@ -143,10 +151,92 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
 
   const give = () => addItem && loadedFor && act([buildGive({ item: addItem.name, amount: addAmount, target: loadedFor, ench: addEnch ? recommendedFor(addItem.name, catalog) : {}, version })], `${label(addItem)} x${addAmount} agregado`);
 
-  const slotProps = (slot: number) => { const it = bySlot.get(slot); return { it, meta: it ? byId.get(it.id) : undefined, version, selected: sel.has(slot), toggle, catalog }; };
+  const slotProps = (slot: number) => { const it = bySlot.get(slot); return { it, meta: it ? byId.get(it.id) : undefined, version, selected: sel.has(slot), toggle, catalog, look }; };
+
+  const renderGrid = (large: boolean) => (
+    <div className="flex gap-3">
+      <div className={cn("grid shrink-0 grid-cols-1 gap-1", large ? "w-16" : "w-12")}>
+        {ARMOR.map((a) => <Slot key={a.slot} slot={a.slot} {...slotProps(a.slot)} big={large} hint={a.label} Icon={Shield} />)}
+        <Slot slot={-106} {...slotProps(-106)} big={large} hint="Mano secundaria" Icon={Hand} />
+      </div>
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Inventario principal</p>
+        <div className="grid grid-cols-9 gap-1">{Array.from({ length: 27 }, (_, i) => <Slot key={i + 9} slot={i + 9} {...slotProps(i + 9)} big={large} />)}</div>
+        <p className="pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Barra rapida</p>
+        <div className="grid grid-cols-9 gap-1">{Array.from({ length: 9 }, (_, i) => <Slot key={i} slot={i} {...slotProps(i)} big={large} />)}</div>
+      </div>
+    </div>
+  );
+
+  // Lista detallada: un objeto por fila con icono, nombre, cantidad y encantamientos con su nombre y nivel
+  const groups: { title: string; test: (n: number) => boolean }[] = [
+    { title: "Armadura y mano secundaria", test: (n) => n >= 100 || n < 0 },
+    { title: "Barra rapida", test: (n) => n >= 0 && n <= 8 },
+    { title: "Inventario principal", test: (n) => n >= 9 && n <= 35 },
+    { title: "Otros", test: (n) => n > 35 && n < 100 },
+  ];
+  const renderList = () => (
+    <div className="space-y-3">
+      {groups.map((g) => {
+        const items = (inv ?? []).filter((it) => g.test(it.slot)).sort((a, b) => b.slot >= 100 && a.slot >= 100 ? b.slot - a.slot : a.slot - b.slot);
+        if (!items.length) return null;
+        return (
+          <div key={g.title} className="space-y-1">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{g.title}</p>
+            {items.map((it) => {
+              const on = sel.has(it.slot);
+              const ench = Object.entries(it.enchants);
+              return (
+                <button key={it.slot} onClick={() => toggle(it.slot)}
+                  className={cn("flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left transition-colors hover:border-primary/40", on && "border-primary bg-primary/10")}>
+                  <ItemIcon id={it.id} version={version} look={look} className="size-10 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-2">
+                      <span className="truncate font-medium">{nameOf(it)}</span>
+                      {it.count > 1 && <span className="font-mono text-sm text-muted-foreground">x{it.count}</span>}
+                      <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">{slotLabel(it.slot)}</span>
+                    </span>
+                    <span className="block truncate font-mono text-[10px] text-muted-foreground">{it.id}</span>
+                    {ench.length > 0 && (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {ench.map(([k, v]) => <Badge key={k} variant="outline" className="h-5 border-chart-5/40 px-1.5 text-[10px] text-chart-5">{enchName(k, catalog, look)} {v}</Badge>)}
+                      </span>
+                    )}
+                    {it.extra.length > 0 && <span className="mt-0.5 block truncate text-[10px] text-muted-foreground" title={it.extra.join(", ")}>{it.extra.join(" · ")}</span>}
+                  </span>
+                  {on && <CheckSquare className="size-4 shrink-0 text-primary" />}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+      {inv?.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Inventario vacio.</p>}
+    </div>
+  );
+
+  const viewControls = (
+    <div className="flex items-center gap-1">
+      <Button size="xs" variant={view === "grid" ? "default" : "ghost"} onClick={() => setView("grid")} title="Cuadricula"><LayoutGrid /></Button>
+      <Button size="xs" variant={view === "list" ? "default" : "ghost"} onClick={() => setView("list")} title="Lista detallada"><List /></Button>
+      {view === "grid" && <Button size="xs" variant={big ? "default" : "ghost"} onClick={() => setBig((b) => !b)} title="Casillas grandes"><ZoomIn /></Button>}
+      <Button size="xs" variant="ghost" onClick={() => setExpanded(true)} title="Pantalla completa"><Maximize2 /></Button>
+    </div>
+  );
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-[96vw] flex-col sm:max-w-[96vw]">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Backpack className="size-4 text-primary" />Inventario de {loadedFor || "—"}</DialogTitle><DialogDescription>Cuadricula grande y lista detallada a la vez. Haz clic para seleccionar; las acciones estan en el panel de la derecha de la pagina.</DialogDescription></DialogHeader>
+          {inv && (
+            <div className="grid min-h-0 flex-1 gap-4 overflow-auto lg:grid-cols-2">
+              <div className="min-w-0">{renderGrid(true)}</div>
+              <div className="min-w-0">{renderList()}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Backpack className="size-4 text-primary" />Inventario{loadedFor && <span className="font-mono text-sm font-normal text-muted-foreground">de {loadedFor}</span>}{reading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}</CardTitle>
@@ -165,20 +255,10 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
             <div className="grid place-items-center rounded-lg border border-dashed py-14 text-sm text-muted-foreground">Elige un jugador conectado y pulsa &quot;Leer inventario&quot;.</div>
           ) : (
             <div className={cn("space-y-3 transition-opacity", reading && "opacity-60")}>
-              <div className="flex gap-3">
-                <div className="grid w-12 shrink-0 grid-cols-1 gap-1">
-                  {ARMOR.map((a) => <Slot key={a.slot} slot={a.slot} {...slotProps(a.slot)} hint={a.label} Icon={Shield} />)}
-                  <Slot slot={-106} {...slotProps(-106)} hint="Mano secundaria" Icon={Hand} />
-                </div>
-                <div className="min-w-0 flex-1 space-y-2">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Inventario principal</p>
-                  <div className="grid grid-cols-9 gap-1">{Array.from({ length: 27 }, (_, i) => <Slot key={i + 9} slot={i + 9} {...slotProps(i + 9)} />)}</div>
-                  <p className="pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Barra rapida</p>
-                  <div className="grid grid-cols-9 gap-1">{Array.from({ length: 9 }, (_, i) => <Slot key={i} slot={i} {...slotProps(i)} />)}</div>
-                </div>
-              </div>
+              {view === "grid" ? renderGrid(big) : renderList()}
               <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                 <Badge variant="secondary">{inv.length} objetos · {inv.reduce((a, s) => a + s.count, 0)} unidades</Badge>
+                {viewControls}
                 <Button size="xs" variant="ghost" onClick={selectAll} disabled={inv.length === 0}><CheckSquare />Seleccionar todo</Button>
                 <Button size="xs" variant="ghost" onClick={() => setSel(new Set())} disabled={sel.size === 0}><Square />Limpiar</Button>
                 <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><Timer className="size-3.5" />Auto cada 15 s <Switch checked={auto} onCheckedChange={setAuto} /></label>
@@ -279,7 +359,7 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
   );
 }
 
-function Slot({ slot, hint, Icon, it, meta, version, selected, toggle, catalog }: { slot: number; hint?: string; Icon?: React.ElementType; it?: InvSlot; meta?: CatalogItem; version: string; selected: boolean; toggle: (s: number) => void; catalog: Catalog | null }) {
+function Slot({ slot, hint, Icon, it, meta, version, selected, toggle, catalog, look, big }: { slot: number; hint?: string; Icon?: React.ElementType; it?: InvSlot; meta?: CatalogItem; version: string; selected: boolean; toggle: (s: number) => void; catalog: Catalog | null; look: Lookup; big?: boolean }) {
   const enchN = it ? Object.keys(it.enchants).length : 0;
   const cell = (
     <button onClick={() => it && toggle(slot)} disabled={!it}
@@ -287,11 +367,8 @@ function Slot({ slot, hint, Icon, it, meta, version, selected, toggle, catalog }
         it ? "hover:border-primary/50" : "border-dashed border-white/10", selected && "border-primary bg-primary/15 ring-1 ring-primary/60", enchN > 0 && !selected && "shadow-[inset_0_0_0_1px_oklch(0.75_0.15_300/60%)]")}>
       {it ? (
         <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`https://mc.nerothe.com/img/${version.startsWith("1.") ? version : "1.21.4"}/minecraft_${it.id}.png`} alt="" className="size-7 [image-rendering:pixelated]" loading="lazy"
-            onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; el.nextElementSibling?.classList.remove("hidden"); }} />
-          <span className="hidden max-w-full break-all px-0.5 text-center text-[8px] leading-tight">{(meta ? label(meta) : it.id.split(":").pop() ?? it.id).slice(0, 14)}</span>
-          {it.count > 1 && <span className="absolute bottom-0.5 right-1 font-mono text-[11px] font-semibold drop-shadow">{it.count}</span>}
+          <ItemIcon id={it.id} version={version} look={look} className={big ? "size-11" : "size-7"} fallback={(meta ? label(meta) : look.item.get(it.id)?.name ?? it.id.split(":").pop() ?? it.id).slice(0, 14)} />
+          {it.count > 1 && <span className={cn("absolute bottom-0.5 right-1 font-mono font-semibold drop-shadow", big ? "text-sm" : "text-[11px]")}>{it.count}</span>}
           {enchN > 0 && <Sparkles className="absolute left-0.5 top-0.5 size-3 text-chart-5" />}
           {selected && <CheckSquare className="absolute right-0.5 top-0.5 size-3 text-primary" />}
         </>
@@ -304,13 +381,45 @@ function Slot({ slot, hint, Icon, it, meta, version, selected, toggle, catalog }
       <TooltipContent side="top" className="max-w-56">
         {it ? (
           <div className="space-y-0.5">
-            <p className="font-medium">{it.name ?? (meta ? label(meta) : it.id)} {it.count > 1 && `x${it.count}`}</p>
+            <p className="font-medium">{it.name ?? (meta ? label(meta) : look.item.get(it.id)?.name ?? it.id)} {it.count > 1 && `x${it.count}`}</p>
             <p className="font-mono text-[10px] opacity-70">{it.id}{hint ? ` · ${hint}` : ` · slot ${slot}`}</p>
-            {enchN > 0 && <p className="text-[11px]">{Object.entries(it.enchants).map(([k, v]) => `${catalog?.enchantments.find((e) => e.name === k)?.es ?? k} ${v}`).join(", ")}</p>}
+            {enchN > 0 && <p className="text-[11px]">{Object.entries(it.enchants).map(([k, v]) => `${enchName(k, catalog, look)} ${v}`).join(", ")}</p>}
             {it.extra.length > 0 && <p className="text-[10px] opacity-60">{it.extra.join(", ")}</p>}
           </div>
         ) : <span className="text-xs opacity-70">{hint ?? `Slot ${slot}`} vacio</span>}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+type Lookup = { item: Map<string, { name: string; icon?: string }>; ench: Map<string, string> };
+
+// Nombres e iconos de objetos/encantamientos de mods (catalogo generado desde los jars del servidor)
+function lookupFor(cat: ModCatalog | null): Lookup {
+  const item = new Map<string, { name: string; icon?: string }>();
+  for (const m of cat?.mods ?? []) for (const i of m.items) item.set(i.id, { name: i.es ?? i.en, icon: i.icon });
+  const ench = new Map<string, string>();
+  for (const e of cat?.enchantments ?? []) ench.set(e.id.replace(/^minecraft:/, ""), e.es ?? e.en);
+  return { item, ench };
+}
+
+const enchName = (k: string, catalog: Catalog | null, look: Lookup) => catalog?.enchantments.find((e) => e.name === k)?.es ?? look.ench.get(k) ?? k.split(":").pop()!.replace(/_/g, " ");
+const slotLabel = (n: number) => ({ 103: "casco", 102: "pechera", 101: "pantalones", 100: "botas", [-106]: "mano sec." } as Record<number, string>)[n] ?? `slot ${n}`;
+
+// Icono: objetos vanilla desde mc.nerothe.com; los de mods desde /mod-items (textura extraida del jar)
+function ItemIcon({ id, version, look, className, fallback }: { id: string; version: string; look: Lookup; className?: string; fallback?: string }) {
+  const mod = id.includes(":") ? look.item.get(id) : undefined;
+  if (id.includes(":")) {
+    return mod?.icon
+      ? <span className={cn("shrink-0 bg-no-repeat [image-rendering:pixelated]", className)} style={{ backgroundImage: `url(/mod-items/${mod.icon})`, backgroundSize: "100% auto", backgroundPosition: "top" }} />
+      : <span className={cn("grid shrink-0 place-items-center break-all px-0.5 text-center text-[8px] leading-tight", className)}>{fallback ?? id.split(":").pop()}</span>;
+  }
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`https://mc.nerothe.com/img/${version.startsWith("1.") ? version : "1.21.4"}/minecraft_${id}.png`} alt="" className={cn("[image-rendering:pixelated]", className)} loading="lazy"
+        onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; el.nextElementSibling?.classList.remove("hidden"); }} />
+      <span className="hidden max-w-full break-all px-0.5 text-center text-[8px] leading-tight">{fallback ?? id}</span>
+    </>
   );
 }
