@@ -61,7 +61,8 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
   const trashStore = useStore<{ player: string; reason: string; item: InvSlot }>("trash");
   const trash = useMemo<TrashEntry[]>(() => trashStore.items.filter((t) => t.player.toLowerCase() === loadedFor.toLowerCase()).map((t) => ({ id: t.id, at: t.at, reason: t.reason, item: t.item })), [trashStore.items, loadedFor]);
   const [serverSnaps, setServerSnaps] = useState<{ at: number; items: InvSlot[]; ender: InvSlot[] }[]>([]);
-  const loadServerSnaps = (who: string) => apiFetch<{ snapshots: { at: number; items: InvSlot[]; ender: InvSlot[] }[] }>(`/api/backup/snapshots?player=${encodeURIComponent(who)}`).then((r) => setServerSnaps(r.snapshots ?? [])).catch(() => {});
+  const [combined, setCombined] = useState<{ items: InvSlot[]; ender: InvSlot[] } | null>(null);
+  const loadServerSnaps = (who: string) => apiFetch<{ snapshots: { at: number; items: InvSlot[]; ender: InvSlot[] }[]; combined?: { items: InvSlot[]; ender: InvSlot[] } | null }>(`/api/backup/snapshots?player=${encodeURIComponent(who)}`).then((r) => { setServerSnaps(r.snapshots ?? []); setCombined(r.combined ?? null); }).catch(() => {});
   const loadRef = useRef<() => void>(() => {});
   // Vista: cuadricula (normal o grande) o lista detallada; ademas se puede abrir a pantalla completa
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -397,7 +398,7 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
             )}
           </CardContent>
         </Card>
-        <RecoveryCard version={version} catalog={catalog} look={look} player={loadedFor} current={inv} history={history} serverSnapshots={serverSnaps} trash={trash} nameOf={nameOf} busy={busy}
+        <RecoveryCard version={version} catalog={catalog} look={look} player={loadedFor} current={inv} history={history} serverSnapshots={serverSnaps} persistedCombined={combined} trash={trash} nameOf={nameOf} busy={busy}
           onRestore={restore} onDropTrash={(ids) => trashStore.removeMany(ids).catch((e) => toast.error((e as Error).message))} onClearTrash={() => trashStore.removeMany(trash.map((t) => t.id)).catch((e) => toast.error((e as Error).message))} />
         <BackupsCard onRan={() => loadedFor && loadServerSnaps(loadedFor)} />
       </div>

@@ -80,6 +80,35 @@ export async function listPlayers(serverId: string): Promise<string[]> {
   } catch { return []; }
 }
 
+// Copia COMBINADA persistente: por objeto (spec exacta, sin importar la casilla) guarda la mayor cantidad vista alguna vez.
+// Se actualiza con cada copia y no se poda, asi lo que se pierda sigue siendo recuperable aunque las copias viejas se borren.
+export type Combined = { updatedAt: number; items: InvSlot[]; ender: InvSlot[] };
+const combinedFile = (serverId: string, player: string) => path.join(DATA, "inventories", safe(serverId), `${safe(player)}.combined.json`);
+const combinedDoc = (serverId: string, player: string) => db()!.collection("servers").doc(serverId).collection("players").doc(player.toLowerCase()).collection("meta").doc("combined");
+
+export async function getCombined(serverId: string, player: string): Promise<Combined | null> {
+  try {
+    if (db()) { const d = await combinedDoc(serverId, player).get(); return d.exists ? (d.data() as Combined) : null; }
+    return JSON.parse(await fs.readFile(combinedFile(serverId, player), "utf8")) as Combined;
+  } catch { return null; }
+}
+
+const mergeBest = (prev: InvSlot[], cur: InvSlot[]) => {
+  const best = new Map<string, InvSlot>();
+  for (const it of prev) best.set(it.spec, it);
+  const per = new Map<string, InvSlot>();
+  for (const it of cur) { const c = per.get(it.spec); per.set(it.spec, c ? { ...c, count: c.count + it.count } : { ...it }); }
+  for (const [spec, it] of per) { const b = best.get(spec); best.set(spec, !b ? it : { ...it, count: Math.max(it.count, b.count) }); }
+  return [...best.values()];
+};
+
+async function updateCombined(serverId: string, snap: BackupSnapshot) {
+  const prev = await getCombined(serverId, snap.player);
+  const next: Combined = { updatedAt: snap.at, items: mergeBest(prev?.items ?? [], snap.items), ender: mergeBest(prev?.ender ?? [], snap.ender) };
+  if (db()) await combinedDoc(serverId, snap.player).set(next);
+  else { const f = combinedFile(serverId, snap.player); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, JSON.stringify(next)); }
+}
+
 async function appendSnapshot(serverId: string, snap: BackupSnapshot, keepDays: number) {
   if (db()) {
     const prev = (await listSnapshots(serverId, snap.player, 1))[0];
@@ -123,7 +152,9 @@ export async function runBackup(serverId = defaultServerId()): Promise<string> {
       const items = await readEntityList(serverId, p, "Inventory");
       if (!items) continue;
       const ender = settings.enderChest ? (await readEntityList(serverId, p, "EnderItems")) ?? [] : [];
-      if (await appendSnapshot(serverId, { at: Date.now(), player: p, items, ender }, settings.keepDays)) saved++;
+      const snap = { at: Date.now(), player: p, items, ender };
+      if (await appendSnapshot(serverId, snap, settings.keepDays)) saved++;
+      await updateCombined(serverId, snap).catch(() => {});
       state.status.players[p] = Date.now();
     }
     return `${players.length} jugador(es) leidos, ${saved} copia(s) nueva(s)`;
