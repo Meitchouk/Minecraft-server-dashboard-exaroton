@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { History, Trash2, Undo2, Sparkles, RotateCcw, Archive, DatabaseBackup, Maximize2, Monitor, Search, CheckSquare, Square } from "lucide-react";
+import { History, Trash2, Undo2, Sparkles, RotateCcw, Archive, DatabaseBackup, Maximize2, Monitor, Search, Layers, CheckSquare, Square } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { type Catalog } from "@/hooks/use-catalog";
@@ -15,6 +15,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { InvSlot } from "@/lib/snbt";
 import { missingFrom, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
+
+type Snap = { at: number; items: InvSlot[]; ender: InvSlot[]; source: "local" | "server" | "combined" };
+
+// Copia COMBINADA: une todas las copias por objeto (spec exacta, sin importar la casilla) y se queda con la mayor
+// cantidad vista de cada uno. Asi se puede devolver cualquier cosa que el jugador haya tenido alguna vez.
+function combine(snaps: Snap[], at: number): Snap {
+  const merge = (pick: (s: Snap) => InvSlot[]) => {
+    const best = new Map<string, InvSlot>();
+    for (const sn of snaps) { // de mas reciente a mas antigua: la casilla guardada es la de la ultima vez que se vio
+      const per = new Map<string, InvSlot>();
+      for (const it of pick(sn)) { const c = per.get(it.spec); if (c) per.set(it.spec, { ...c, count: c.count + it.count }); else per.set(it.spec, { ...it }); }
+      for (const [spec, it] of per) { const b = best.get(spec); if (!b) best.set(spec, it); else if (it.count > b.count) best.set(spec, { ...b, count: it.count }); }
+    }
+    return [...best.values()].sort((a, b) => a.id.localeCompare(b.id));
+  };
+  return { at, items: merge((x) => x.items), ender: merge((x) => x.ender), source: "combined" };
+}
 
 const fmt = (t: number) => new Date(t).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
@@ -50,10 +67,18 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
   const [snapIdx, setSnapIdx] = useState(0);
   const [open, setOpen] = useState(false);
   // Combina lecturas locales (este navegador) y copias automaticas del servidor, de mas reciente a mas antigua
-  const all = useMemo(() => [
-    ...history.map((h) => ({ at: h.at, items: h.items, ender: [] as InvSlot[], source: "local" as const })),
-    ...serverSnapshots.map((h) => ({ at: h.at, items: h.items, ender: h.ender, source: "server" as const })),
-  ].sort((a, b) => b.at - a.at), [history, serverSnapshots]);
+  // Agrupar: cada ventana de N minutos se une en una sola copia combinada (0 = ver cada copia por separado)
+  const [win, setWin] = useState(0);
+  const all = useMemo<Snap[]>(() => {
+    const snaps: Snap[] = [
+      ...history.map((h) => ({ at: h.at, items: h.items, ender: [] as InvSlot[], source: "local" as const })),
+      ...serverSnapshots.map((h) => ({ at: h.at, items: h.items, ender: h.ender, source: "server" as const })),
+    ].sort((a, b) => b.at - a.at);
+    if (!win) return snaps;
+    const buckets = new Map<number, Snap[]>();
+    for (const sn of snaps) { const b = Math.floor(sn.at / (win * 60000)); buckets.set(b, [...(buckets.get(b) ?? []), sn]); }
+    return [...buckets.values()].map((g) => combine(g, g[0].at));
+  }, [history, serverSnapshots, win]);
   const snap = all[snapIdx];
   const missing = useMemo(() => (snap && current ? missingFrom(snap.items, current) : []), [snap, current]);
 
@@ -65,7 +90,7 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
             <DialogTitle className="flex items-center gap-2"><Archive className="size-4 text-primary" />Recuperar objetos de {player || "—"}</DialogTitle>
             <DialogDescription>Elige una copia a la izquierda: arriba ves lo que le falta ahora respecto a esa copia, y puedes devolver objeto a objeto o todo junto. Todo se regenera con sus encantamientos y componentes exactos.</DialogDescription>
           </DialogHeader>
-          <FullView all={all} idx={snapIdx} setIdx={setSnapIdx} current={current} trash={trash} nameOf={nameOf} busy={busy} onRestore={onRestore} version={version} catalog={catalog} look={look} />
+          <FullView all={all} idx={snapIdx} setIdx={setSnapIdx} win={win} setWin={(w) => { setWin(w); setSnapIdx(0); }} current={current} trash={trash} nameOf={nameOf} busy={busy} onRestore={onRestore} version={version} catalog={catalog} look={look} />
         </DialogContent>
       </Dialog>
       <CardHeader>
@@ -110,14 +135,14 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
               <>
                 <div className="flex max-h-24 flex-wrap gap-1 overflow-auto">
                   {all.slice(0, 40).map((h, i) => (
-                    <Button key={`${h.source}-${h.at}`} size="xs" variant={i === snapIdx ? "default" : "outline"} onClick={() => setSnapIdx(i)} title={`${h.items.length} objetos · ${h.source === "server" ? "copia automatica" : "lectura del panel"}`}>
-                      {h.source === "server" && <DatabaseBackup className="size-3" />}{i === 0 ? "Ultima" : fmt(h.at)}
+                    <Button key={`${h.source}-${h.at}`} size="xs" variant={i === snapIdx ? "default" : "outline"} onClick={() => setSnapIdx(i)} title={`${h.items.length} objetos · ${h.source === "combined" ? "union de todas las copias de esa franja" : h.source === "server" ? "copia automatica" : "lectura del panel"}`}>
+                      {h.source === "combined" ? <Layers className="size-3" /> : h.source === "server" && <DatabaseBackup className="size-3" />}{h.source === "combined" ? fmt(h.at) : i === 0 ? "Ultima" : fmt(h.at)}
                     </Button>
                   ))}
                 </div>
                 {snap && (
                   <>
-                    <p className="text-[11px] text-muted-foreground">{fmt(snap.at)} · {snap.source === "server" ? "copia automatica" : "lectura del panel"} · {snap.items.length} objetos · {snap.items.reduce((a, i) => a + i.count, 0)} unidades{snap.ender.length > 0 && ` · cofre de Ender: ${snap.ender.length}`}</p>
+                    <p className="text-[11px] text-muted-foreground">{fmt(snap.at)} · {snap.source === "combined" ? "combinada de la franja" : snap.source === "server" ? "copia automatica" : "lectura del panel"} · {snap.items.length} objetos · {snap.items.reduce((a, i) => a + i.count, 0)} unidades{snap.ender.length > 0 && ` · cofre de Ender: ${snap.ender.length}`}</p>
                     {current && (
                       missing.length === 0 ? <p className="rounded-md bg-primary/10 px-2 py-1.5 text-xs text-primary">El inventario actual ya tiene todo lo de esta lectura.</p> : (
                         <div className="space-y-1.5 rounded-md border border-chart-3/40 bg-chart-3/10 p-2">
@@ -154,11 +179,10 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
   );
 }
 
-type Snap = { at: number; items: InvSlot[]; ender: InvSlot[]; source: "local" | "server" };
 
 // Vista a pantalla completa: linea de tiempo de copias + objetos grandes con icono y encantamientos
-function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, version, catalog, look }: {
-  all: Snap[]; idx: number; setIdx: (i: number) => void; current: InvSlot[] | null; trash: TrashEntry[];
+function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy, onRestore, version, catalog, look }: {
+  all: Snap[]; idx: number; setIdx: (i: number) => void; win: number; setWin: (w: number) => void; current: InvSlot[] | null; trash: TrashEntry[];
   nameOf: (i: InvSlot) => string; busy: boolean; onRestore: (items: InvSlot[], trashIds?: string[], snapshot?: InvSlot[]) => void;
   version: string; catalog: Catalog | null; look: Lookup;
 }) {
@@ -196,6 +220,12 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
     <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[18rem_1fr]">
       {/* Linea de tiempo */}
       <div className="min-h-0 overflow-auto rounded-lg border p-2">
+        <div className="mb-2 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+          <Layers className="size-3.5" />Combinar cada
+          <select value={win} onChange={(e) => setWin(Number(e.target.value))} className="ml-auto h-7 rounded-md border bg-background px-1.5 text-xs text-foreground">
+            {[[0, "Sin combinar"], [15, "15 min"], [30, "30 min"], [60, "1 hora"], [360, "6 horas"], [1440, "1 dia"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
         {all.length === 0 && <p className="p-4 text-center text-xs text-muted-foreground">Aun no hay copias.</p>}
         {days.map((d) => (
           <div key={d.day} className="mb-2">
@@ -203,8 +233,8 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
             {d.rows.map(({ i, h }) => (
               <button key={h.source + h.at} onClick={() => { setIdx(i); setTab("missing"); }}
                 className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted", i === idx && "bg-primary/15 text-primary")}>
-                {h.source === "server" ? <DatabaseBackup className="size-3.5 shrink-0 opacity-70" /> : <Monitor className="size-3.5 shrink-0 opacity-70" />}
-                <span className="font-mono">{new Date(h.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                {h.source === "combined" ? <Layers className="size-3.5 shrink-0 text-primary" /> : h.source === "server" ? <DatabaseBackup className="size-3.5 shrink-0 opacity-70" /> : <Monitor className="size-3.5 shrink-0 opacity-70" />}
+                <span className={h.source === "combined" ? "font-medium" : "font-mono"}>{new Date(h.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{h.source === "combined" && win > 0 && <span className="text-[11px] text-muted-foreground"> · ult. {win < 60 ? `${win} min` : win < 1440 ? `${win / 60} h` : "dia"}</span>}</span>
                 <span className="text-[11px] text-muted-foreground">{h.items.length} obj.</span>
                 {current && missingCounts[i] > 0 && <Badge variant="outline" className="ml-auto h-5 border-chart-3/50 px-1.5 text-[10px] text-chart-3">faltan {missingCounts[i]}</Badge>}
               </button>
@@ -218,7 +248,7 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
         {snap && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
             <span className="font-medium">{fmt(snap.at)}</span>
-            <Badge variant="secondary">{snap.source === "server" ? "copia automatica" : "lectura del panel"}</Badge>
+            <Badge variant="secondary">{snap.source === "combined" ? "combinada de la franja" : snap.source === "server" ? "copia automatica" : "lectura del panel"}</Badge>
             <span className="text-muted-foreground">{snap.items.length} objetos · {snap.items.reduce((a, i) => a + i.count, 0)} unidades{snap.ender.length > 0 && ` · Ender: ${snap.ender.length}`}</span>
             {missing.length > 0 && <Button size="sm" className="ml-auto" disabled={busy} onClick={() => onRestore(missing, undefined, snap.items)}><RotateCcw />Devolver todo lo que falta ({missing.length})</Button>}
           </div>
