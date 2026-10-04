@@ -106,7 +106,7 @@ export default function PlayersPage() {
       </PageHeader>
 
       <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-        <TabsList className="w-full sm:w-auto">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto [&>*]:flex-none [&>*]:px-2.5">
           {LISTS.map((l) => <TabsTrigger key={l.id} value={l.id} className="gap-1.5"><l.icon className="size-4" />{l.label}{permsTop.ready && l.id !== "whitelist" && !(l.id === "ops" ? permsTop.can("players.ops") : permsTop.can("players.bans")) && <AdminBadge />}</TabsTrigger>)}
         </TabsList>
         {LISTS.map((l) => (

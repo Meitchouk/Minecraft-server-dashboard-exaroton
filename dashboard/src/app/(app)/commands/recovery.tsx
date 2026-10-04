@@ -230,9 +230,9 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
   const restorePicked = () => onRestore(picked.map(({ it }) => it), tab === "trash" ? picked.map(({ k }) => trash[k]?.id).filter(Boolean) : undefined, dedupe);
 
   return (
-    <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[18rem_1fr]">
+    <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 md:grid-cols-[18rem_1fr] md:grid-rows-1">
       {/* Linea de tiempo */}
-      <div className="min-h-0 overflow-auto rounded-lg border p-2">
+      <div className="max-h-44 min-h-0 overflow-auto rounded-lg border p-2 md:max-h-none">
         <div className="mb-2 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
           <Layers className="size-3.5" />Combinar cada
           <select value={win} onChange={(e) => setWin(Number(e.target.value))} className="ml-auto h-7 rounded-md border bg-background px-1.5 text-xs text-foreground">
@@ -282,7 +282,7 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
             <Button size="sm" variant="ghost" disabled={!shown.length} onClick={() => setSel(allPicked ? new Set() : new Set(shown.map(({ k }) => k)))}>{allPicked ? <Square /> : <CheckSquare />}{allPicked ? "Quitar seleccion" : "Seleccionar todo"}</Button>
             <Button size="sm" disabled={busy || !picked.length} onClick={restorePicked}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"} seleccionados ({picked.length})</Button>
           </div>
-          <div className="relative w-56"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar objetos…" className="h-8 pl-8 text-xs" /></div>
+          <div className="relative w-full sm:w-56"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar objetos…" className="h-8 pl-8 text-xs" /></div>
         </div>
         {tab === "missing" && baseItems && missing.length === 0 && <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{against >= 0 ? "La otra copia ya tiene todo lo de esta." : "El inventario actual ya tiene todo lo de esta copia."}</p>}
         {tab === "missing" && against < 0 && !current && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">Lee primero el inventario actual para calcular lo que falta.</p>}

@@ -415,8 +415,8 @@ function Slot({ slot, hint, Icon, it, meta, version, selected, toggle, catalog, 
         it ? "hover:border-primary/50" : "border-dashed border-white/10", selected && "border-primary bg-primary/15 ring-1 ring-primary/60", enchN > 0 && !selected && "shadow-[inset_0_0_0_1px_oklch(0.75_0.15_300/60%)]")}>
       {it ? (
         <>
-          <ItemIcon id={it.id} version={version} look={look} className={big ? "size-11" : "size-7"} fallback={(meta ? label(meta) : look.item.get(it.id)?.name ?? it.id.split(":").pop() ?? it.id).slice(0, 14)} />
-          {it.count > 1 && <span className={cn("absolute bottom-0.5 right-1 font-mono font-semibold drop-shadow", big ? "text-sm" : "text-[11px]")}>{it.count}</span>}
+          <ItemIcon id={it.id} version={version} look={look} className={big ? "size-7 sm:size-11" : "size-7"} fallback={(meta ? label(meta) : look.item.get(it.id)?.name ?? it.id.split(":").pop() ?? it.id).slice(0, 14)} />
+          {it.count > 1 && <span className={cn("absolute bottom-0.5 right-1 font-mono font-semibold drop-shadow", big ? "text-[11px] sm:text-sm" : "text-[11px]")}>{it.count}</span>}
           {enchN > 0 && <Sparkles className="absolute left-0.5 top-0.5 size-3 text-chart-5" />}
           {selected && <CheckSquare className="absolute right-0.5 top-0.5 size-3 text-primary" />}
         </>

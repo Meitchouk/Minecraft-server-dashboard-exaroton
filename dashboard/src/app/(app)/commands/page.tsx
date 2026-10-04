@@ -67,7 +67,7 @@ export default function CommandsPage() {
         )}
 
         <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-          <TabsList className="w-full flex-wrap sm:w-auto">
+          <TabsList className="w-full justify-start overflow-x-auto sm:w-auto [&>*]:flex-none [&>*]:px-2.5">
             <TabsTrigger value="quick" className="gap-1.5"><Zap className="size-4" />Rapidos</TabsTrigger>
             <TabsTrigger value="give" className="gap-1.5"><Gift className="size-4" />Give</TabsTrigger>
             <TabsTrigger value="modgive" className="gap-1.5"><Puzzle className="size-4" />Give mods</TabsTrigger>

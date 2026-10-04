@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { HomeHealth } from "@/components/home-health";
 import { StatusBadge } from "@/components/status-badge";
 import { ServerControls } from "@/components/server-controls";
 import { usePoll, useServer } from "@/hooks/use-server";
@@ -110,6 +111,8 @@ export default function OverviewPage() {
           value={account ? account.credits.toFixed(2) : undefined}
           sub={account ? account.name : undefined} />
       </div>
+
+      <HomeHealth />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Players list */}

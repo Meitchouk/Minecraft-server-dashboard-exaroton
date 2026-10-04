@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
-import {
-  LayoutDashboard, TerminalSquare, Zap, Gavel, MessageSquareHeart, BarChart3, Settings2, Users, FolderTree, Puzzle, SlidersHorizontal, Server, ChevronDown, Check, Cpu, Menu, ShieldCheck, LogOut, KeyRound, UserRound,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Server, ChevronDown, Check, Cpu, Menu, ShieldCheck, LogOut, KeyRound, Search } from "lucide-react";
+import { NAV } from "@/components/nav";
+import { CommandPalette, usePaletteShortcut } from "@/components/command-palette";
+import { NotificationsBell } from "@/components/notifications";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,20 +22,6 @@ import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-const NAV = [
-  { href: "/", label: "Resumen", icon: LayoutDashboard },
-  { href: "/console", label: "Consola", icon: TerminalSquare },
-  { href: "/commands", label: "Comandos", icon: Zap },
-  { href: "/discipline", label: "Castigos y premios", icon: Gavel },
-  { href: "/messages", label: "Mensajes", icon: MessageSquareHeart },
-  { href: "/stats", label: "Estadisticas", icon: BarChart3 },
-  { href: "/config", label: "Configuracion", icon: Settings2 },
-  { href: "/players", label: "Jugadores", icon: Users },
-  { href: "/profile", label: "Ficha de jugador", icon: UserRound },
-  { href: "/files", label: "Archivos", icon: FolderTree },
-  { href: "/mods", label: "Mods", icon: Puzzle },
-  { href: "/settings", label: "Ajustes", icon: SlidersHorizontal },
-];
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname();
@@ -134,6 +121,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 function TopBar() {
   const { data: server, refresh } = useServer(5000);
+  const [pal, setPal] = useState(false);
+  const toggle = useCallback(() => setPal((v) => !v), []);
+  usePaletteShortcut(toggle);
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur md:px-6">
       <Dialog>
@@ -153,7 +143,11 @@ function TopBar() {
           </Badge>
         )}
       </div>
-      <div className="ml-auto">
+      <Button variant="outline" size="sm" className="ml-auto hidden gap-2 text-muted-foreground sm:inline-flex" onClick={() => setPal(true)}><Search className="size-3.5" />Buscar<kbd className="rounded border px-1 text-[10px]">Ctrl K</kbd></Button>
+      <Button variant="ghost" size="icon" className="ml-auto sm:hidden" onClick={() => setPal(true)} title="Buscar"><Search /></Button>
+      <NotificationsBell />
+      <CommandPalette open={pal} onOpenChange={setPal} />
+      <div>
         <ServerControls status={server?.status} onDone={refresh} size="sm" />
       </div>
     </header>
