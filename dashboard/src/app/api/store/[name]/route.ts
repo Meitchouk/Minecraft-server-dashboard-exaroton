@@ -6,7 +6,7 @@ import { handle, q, serverIdFrom, userFrom } from "@/lib/route";
 //  - por servidor (compartidos entre todos los usuarios): warps, trash, custom_items
 //  - por usuario: favorites
 // GET -> lista | PUT { id?, ...data } -> crea/actualiza | DELETE ?id= | DELETE ?all=1
-const SHARED = new Set(["warps", "trash", "custom_items"]);
+const SHARED = new Set(["warps", "trash", "custom_items", "kits"]);
 const PER_USER = new Set(["favorites"]);
 
 function col(req: Parameters<typeof serverIdFrom>[0], name: string) {

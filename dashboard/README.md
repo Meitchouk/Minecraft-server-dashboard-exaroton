@@ -64,9 +64,11 @@ Si no hay clave de servicio, las copias y la auditoria caen a archivos en `data/
 | `/config` | `server.properties` como formulario agrupado (Juego, Acceso, Mundo, Rendimiento, Resource pack) con barra de cambios pendientes |
 | `/players` | Whitelist, OPs, baneados y IPs baneadas |
 | `/files` | Explorador con editor de texto, subir, crear carpeta, eliminar, descargar |
-| `/settings` | Mi API key (temporal por sesion), RAM (slider), MOTD con vista previa y colores §, datos del servidor y cuenta |
+| `/settings` | Reinicios programados con avisos y alerta de TPS bajo (Discord), Mi API key (temporal por sesion), RAM (slider), MOTD con vista previa y colores §, datos del servidor y cuenta |
 | `/discipline` | Castigos y premios rapidos para un jugador |
 | `/messages` | Bienvenida con titulo al entrar, consejos automaticos, reglas (/rules) y avisos a Discord por webhook — sin mods, via observador de consola |
+| `/profile` | Ficha de jugador: estadisticas, ultimo inventario guardado, sesiones y acciones del panel |
+| `/mods` | Lista de mods, detecta repetidos y activa/desactiva (mueve a `mods-disabled`; aplica al reiniciar) |
 | `/stats` | Estadisticas reales por jugador (world/players/stats) e historial de conexiones (grafica 24h/7d/30d, sesiones) |
 | `/admin` | (solo admin) aprobar/revocar usuarios, roles, contraseñas y auditoria |
 

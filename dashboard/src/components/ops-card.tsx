@@ -23,7 +23,7 @@ const parseList = (s: string) => s.split(/[,\s]+/).filter(Boolean);
 
 // Reinicios programados (con avisos en el juego) y vigilancia del TPS con alerta a Discord
 export function OpsCard() {
-  const { data, key, setData } = usePoll(() => apiFetch<Resp>("/api/ops"), 30000);
+  const { data, key, setData } = usePoll(() => apiFetch<Resp>("/api/ops"), 0);
   const [draft, setDraft] = useDraft<Ops>(data?.settings ?? null, key);
   const [times, setTimes] = useState<string | null>(null);
   const [warns, setWarns] = useState<string | null>(null);

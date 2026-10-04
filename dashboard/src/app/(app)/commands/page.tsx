@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Zap, Gift, Puzzle, FlaskConical, PawPrint, Star, MapPin, Backpack, Sparkles, History, Trash2, CheckCircle2, XCircle } from "lucide-react";
+import { Zap, Gift, Puzzle, FlaskConical, PawPrint, Star, MapPin, Backpack, Sparkles, PackagePlus, History, Trash2, CheckCircle2, XCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Favorites } from "./favorites";
 import { TeleportCommand } from "./teleport";
 import { InventoryCommand } from "./inventory";
 import { ImprovementsTab } from "./improvements";
+import { KitsCommand } from "./kits";
 
 function HistoryPanel() {
   const { history, clear, run } = useCommands();
@@ -71,6 +72,7 @@ export default function CommandsPage() {
             <TabsTrigger value="give" className="gap-1.5"><Gift className="size-4" />Give</TabsTrigger>
             <TabsTrigger value="modgive" className="gap-1.5"><Puzzle className="size-4" />Give mods</TabsTrigger>
             <TabsTrigger value="inv" className="gap-1.5"><Backpack className="size-4" />Inventario</TabsTrigger>
+            <TabsTrigger value="kits" className="gap-1.5"><PackagePlus className="size-4" />Kits</TabsTrigger>
             <TabsTrigger value="tp" className="gap-1.5"><MapPin className="size-4" />Teleport</TabsTrigger>
             <TabsTrigger value="effects" className="gap-1.5"><FlaskConical className="size-4" />Efectos</TabsTrigger>
             <TabsTrigger value="summon" className="gap-1.5"><PawPrint className="size-4" />Invocar</TabsTrigger>
@@ -81,6 +83,7 @@ export default function CommandsPage() {
           <TabsContent value="give"><GiveCommand catalog={catalog} loading={catLoading} players={players} /></TabsContent>
           <TabsContent value="modgive"><ModGiveCommand players={players} /></TabsContent>
           <TabsContent value="inv"><InventoryCommand catalog={catalog} players={players} /></TabsContent>
+          <TabsContent value="kits"><KitsCommand players={players} version={catalog?.version ?? "1.21"} /></TabsContent>
           <TabsContent value="tp"><TeleportCommand players={players} /></TabsContent>
           <TabsContent value="effects"><EffectsCommand catalog={catalog} loading={catLoading} players={players} /></TabsContent>
           <TabsContent value="summon"><SummonCommand catalog={catalog} loading={catLoading} players={players} /></TabsContent>
