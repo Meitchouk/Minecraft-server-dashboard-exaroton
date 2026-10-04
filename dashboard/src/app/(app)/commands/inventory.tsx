@@ -163,7 +163,14 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
     const count = (l: InvSlot[], spec: string) => l.filter((x) => x.spec === spec).reduce((a, x) => a + x.count, 0);
     const need = new Map<string, number>();
     for (const i of toGive) need.set(i.spec, (need.get(i.spec) ?? 0) + i.count);
-    const cmds = toGive.map((it) => giveCmd(loadedFor, it));
+    // Armadura / mano secundaria: si su casilla esta vacia se EQUIPA directamente; si esta ocupada se da al inventario (nunca se pisa nada)
+    const EQUIP: Record<number, string> = { 103: "armor.head", 102: "armor.chest", 101: "armor.legs", 100: "armor.feet", [-106]: "weapon.offhand" };
+    const usedSlots = new Set<number>();
+    const cmds = toGive.map((it) => {
+      const where = EQUIP[it.slot];
+      if (where && it.count === 1 && !before.some((x) => x.slot === it.slot) && !usedSlots.has(it.slot)) { usedSlots.add(it.slot); return `item replace entity ${loadedFor} ${where} with ${it.spec} 1`; }
+      return giveCmd(loadedFor, it);
+    });
     let after = await readInventory(loadedFor, cmds).catch(() => null);
     // un reintento de lectura por si la consola aun no habia aplicado los give
     const arrived = (a: InvSlot[]) => toGive.filter((it) => (count(a, it.spec) - count(before, it.spec)) >= (need.get(it.spec) ?? 0));

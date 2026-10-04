@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { History, Trash2, Undo2, Sparkles, RotateCcw, Archive, DatabaseBackup, Maximize2, Monitor, Search } from "lucide-react";
+import { History, Trash2, Undo2, Sparkles, RotateCcw, Archive, DatabaseBackup, Maximize2, Monitor, Search, CheckSquare, Square } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { type Catalog } from "@/hooks/use-catalog";
@@ -162,7 +162,13 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
   nameOf: (i: InvSlot) => string; busy: boolean; onRestore: (items: InvSlot[], trashIds?: string[], snapshot?: InvSlot[]) => void;
   version: string; catalog: Catalog | null; look: Lookup;
 }) {
-  const [tab, setTab] = useState<"missing" | "all" | "ender" | "trash">("missing");
+  const [tab, setTab] = useState<"missing" | "armor" | "all" | "ender" | "trash">("missing");
+  // la seleccion es valida solo para la pestaña y copia donde se hizo
+  const ctx = `${tab}:${all[idx]?.at ?? 0}`;
+  const [selState, setSelState] = useState<{ ctx: string; set: Set<number> }>({ ctx: "", set: new Set() });
+  const sel = selState.ctx === ctx ? selState.set : new Set<number>();
+  const setSel = (f: Set<number> | ((s: Set<number>) => Set<number>)) => setSelState({ ctx, set: typeof f === "function" ? f(sel) : f });
+  const isArmor = (i: InvSlot) => i.slot >= 100 || i.slot < 0;
   const [q, setQ] = useState("");
   const snap = all[idx];
   // cuantos objetos faltan respecto a cada copia (para verlo de un vistazo en la linea de tiempo)
@@ -177,9 +183,14 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
     });
     return out;
   }, [all]);
-  const list = tab === "missing" ? missing : tab === "all" ? (snap?.items ?? []) : tab === "ender" ? (snap?.ender ?? []) : trash.map((t) => t.item);
+  const list = tab === "missing" ? missing : tab === "armor" ? (snap?.items ?? []).filter(isArmor) : tab === "all" ? (snap?.items ?? []) : tab === "ender" ? (snap?.ender ?? []) : trash.map((t) => t.item);
   const n = q.trim().toLowerCase();
   const shown = list.map((it, k) => ({ it, k })).filter(({ it }) => !n || nameOf(it).toLowerCase().includes(n) || it.id.includes(n));
+  const dedupe = tab === "missing" || tab === "armor" ? snap?.items : undefined; // recalcula contra el inventario real al devolver
+  const picked = shown.filter(({ k }) => sel.has(k));
+  const allPicked = shown.length > 0 && picked.length === shown.length;
+  const toggle = (k: number) => setSel((s) => { const x = new Set(s); if (x.has(k)) x.delete(k); else x.add(k); return x; });
+  const restorePicked = () => onRestore(picked.map(({ it }) => it), tab === "trash" ? picked.map(({ k }) => trash[k]?.id).filter(Boolean) : undefined, dedupe);
 
   return (
     <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[18rem_1fr]">
@@ -213,10 +224,14 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {([["missing", `Lo que falta (${missing.length})`], ["all", `Copia completa (${snap?.items.length ?? 0})`], ["ender", `Cofre de Ender (${snap?.ender.length ?? 0})`], ["trash", `Papelera (${trash.length})`]] as const).map(([k, l]) => (
+          {([["missing", `Lo que falta (${missing.length})`], ["armor", `Armadura (${(snap?.items ?? []).filter(isArmor).length})`], ["all", `Copia completa (${snap?.items.length ?? 0})`], ["ender", `Cofre de Ender (${snap?.ender.length ?? 0})`], ["trash", `Papelera (${trash.length})`]] as const).map(([k, l]) => (
             <Button key={k} size="sm" variant={tab === k ? "default" : "outline"} onClick={() => setTab(k)}>{l}</Button>
           ))}
-          <div className="relative ml-auto w-56"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar objetos…" className="h-8 pl-8 text-xs" /></div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="ghost" disabled={!shown.length} onClick={() => setSel(allPicked ? new Set() : new Set(shown.map(({ k }) => k)))}>{allPicked ? <Square /> : <CheckSquare />}{allPicked ? "Quitar seleccion" : "Seleccionar todo"}</Button>
+            <Button size="sm" disabled={busy || !picked.length} onClick={restorePicked}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"} seleccionados ({picked.length})</Button>
+          </div>
+          <div className="relative w-56"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar objetos…" className="h-8 pl-8 text-xs" /></div>
         </div>
         {tab === "missing" && current && missing.length === 0 && <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">El inventario actual ya tiene todo lo de esta copia.</p>}
         {tab === "missing" && !current && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">Lee primero el inventario actual para calcular lo que falta.</p>}
@@ -225,7 +240,8 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
             const ench = Object.entries(it.enchants);
             const trashId = tab === "trash" ? trash[k]?.id : undefined;
             return (
-              <div key={(tab === "trash" ? trashId : it.slot) + ":" + k} className="flex items-start gap-3 rounded-lg border bg-card/60 p-3">
+              <div key={(tab === "trash" ? trashId : it.slot) + ":" + k} onClick={() => toggle(k)} className={cn("flex cursor-pointer items-start gap-3 rounded-lg border bg-card/60 p-3 transition-colors hover:border-primary/40", sel.has(k) && "border-primary bg-primary/10")}>
+                {sel.has(k) ? <CheckSquare className="mt-1 size-4 shrink-0 text-primary" /> : <Square className="mt-1 size-4 shrink-0 text-muted-foreground" />}
                 <ItemIcon id={it.id} version={version} look={look} className="size-12 shrink-0" fallback={nameOf(it)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
@@ -235,7 +251,7 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
                   <p className="truncate font-mono text-[10px] text-muted-foreground">{it.id} · {slotLabel(it.slot)}</p>
                   {ench.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{ench.map(([e, v]) => <Badge key={e} variant="outline" className="h-5 border-chart-5/40 px-1.5 text-[10px] text-chart-5"><Sparkles className="size-2.5" />{enchName(e, catalog, look)} {v}</Badge>)}</div>}
                 </div>
-                <Button size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={() => onRestore([it], trashId ? [trashId] : undefined, tab === "missing" ? snap?.items : undefined)}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"}</Button>
+                <Button size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={(e) => { e.stopPropagation(); onRestore([it], trashId ? [trashId] : undefined, dedupe); }}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"}</Button>
               </div>
             );
           })}
