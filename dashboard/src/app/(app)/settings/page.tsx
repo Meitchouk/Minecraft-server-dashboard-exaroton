@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/page-header";
 import { OwnKeyCard } from "@/components/own-key-card";
+import { OpsCard } from "@/components/ops-card";
 import { usePermissions } from "@/hooks/use-permissions";
 import { AdminBadge } from "@/components/admin-only";
 import { useDraft, usePoll, useServer } from "@/hooks/use-server";
@@ -75,6 +76,7 @@ export default function SettingsPage() {
       <OwnKeyCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <OpsCard />
         {/* RAM */}
         <Card>
           <CardHeader>

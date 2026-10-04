@@ -16,7 +16,7 @@ import {
 import type { InvSlot } from "@/lib/snbt";
 import { missingFrom, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
 
-type Snap = { at: number; items: InvSlot[]; ender: InvSlot[]; source: "local" | "server" | "combined" };
+type Snap = { at: number; items: InvSlot[]; ender: InvSlot[]; source: "local" | "server" | "combined"; seen?: Record<string, number> };
 
 // Copia COMBINADA: une todas las copias por objeto (spec exacta, sin importar la casilla) y se queda con la mayor
 // cantidad vista de cada uno. Asi se puede devolver cualquier cosa que el jugador haya tenido alguna vez.
@@ -30,7 +30,10 @@ function combine(snaps: Snap[], at: number): Snap {
     }
     return [...best.values()].sort((a, b) => a.id.localeCompare(b.id));
   };
-  return { at, items: merge((x) => x.items), ender: merge((x) => x.ender), source: "combined" };
+  // ultima vez que se vio cada objeto (las copias llegan de mas reciente a mas antigua)
+  const seen: Record<string, number> = {};
+  for (const sn of snaps) for (const it of [...sn.items, ...sn.ender]) if (!(it.spec in seen)) seen[it.spec] = sn.at;
+  return { at, items: merge((x) => x.items), ender: merge((x) => x.ender), source: "combined", seen };
 }
 
 const fmt = (t: number) => new Date(t).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -194,10 +197,14 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
   const setSel = (f: Set<number> | ((s: Set<number>) => Set<number>)) => setSelState({ ctx, set: typeof f === "function" ? f(sel) : f });
   const isArmor = (i: InvSlot) => i.slot >= 100 || i.slot < 0;
   const [q, setQ] = useState("");
+  const [against, setAgainst] = useState(-1); // -1 = inventario actual; si no, otra copia con la que comparar
   const snap = all[idx];
+  const baseItems = against >= 0 && all[against] ? all[against].items : current;
+  // perdida entre cada copia y la anterior en el tiempo: objetos que estaban en la anterior y ya no (muertes, errores...)
+  const losses = useMemo(() => all.map((h, i) => (all[i + 1] && h.source !== "combined" ? missingFrom(all[i + 1].items, h.items).length : 0)), [all]);
   // cuantos objetos faltan respecto a cada copia (para verlo de un vistazo en la linea de tiempo)
   const missingCounts = useMemo(() => all.map((h) => (current ? missingFrom(h.items, current).length : 0)), [all, current]);
-  const missing = useMemo(() => (snap && current ? missingFrom(snap.items, current) : []), [snap, current]);
+  const missing = useMemo(() => (snap && baseItems ? missingFrom(snap.items, baseItems) : []), [snap, baseItems]);
   const days = useMemo(() => {
     const out: { day: string; rows: { i: number; h: Snap }[] }[] = [];
     all.forEach((h, i) => {
@@ -236,7 +243,8 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
                 {h.source === "combined" ? <Layers className="size-3.5 shrink-0 text-primary" /> : h.source === "server" ? <DatabaseBackup className="size-3.5 shrink-0 opacity-70" /> : <Monitor className="size-3.5 shrink-0 opacity-70" />}
                 <span className={h.source === "combined" ? "font-medium" : "font-mono"}>{new Date(h.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{h.source === "combined" && win > 0 && <span className="text-[11px] text-muted-foreground"> · ult. {win < 60 ? `${win} min` : win < 1440 ? `${win / 60} h` : "dia"}</span>}</span>
                 <span className="text-[11px] text-muted-foreground">{h.items.length} obj.</span>
-                {current && missingCounts[i] > 0 && <Badge variant="outline" className="ml-auto h-5 border-chart-3/50 px-1.5 text-[10px] text-chart-3">faltan {missingCounts[i]}</Badge>}
+                {losses[i] >= 5 && <Badge variant="outline" className="h-5 border-destructive/50 px-1.5 text-[10px] text-destructive" title={`Respecto a la copia anterior se perdieron ${losses[i]} objetos`}>-{losses[i]}</Badge>}
+                {current && missingCounts[i] > 0 && <Badge variant="outline" className={cn("h-5 border-chart-3/50 px-1.5 text-[10px] text-chart-3", losses[i] < 5 && "ml-auto")}>faltan {missingCounts[i]}</Badge>}
               </button>
             ))}
           </div>
@@ -250,11 +258,18 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
             <span className="font-medium">{fmt(snap.at)}</span>
             <Badge variant="secondary">{snap.source === "combined" ? "combinada de la franja" : snap.source === "server" ? "copia automatica" : "lectura del panel"}</Badge>
             <span className="text-muted-foreground">{snap.items.length} objetos · {snap.items.reduce((a, i) => a + i.count, 0)} unidades{snap.ender.length > 0 && ` · Ender: ${snap.ender.length}`}</span>
-            {missing.length > 0 && <Button size="sm" className="ml-auto" disabled={busy} onClick={() => onRestore(missing, undefined, snap.items)}><RotateCcw />Devolver todo lo que falta ({missing.length})</Button>}
+            <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">Comparar con
+              <select value={against} onChange={(e) => setAgainst(Number(e.target.value))} className="h-7 max-w-44 rounded-md border bg-background px-1.5 text-xs text-foreground">
+                <option value={-1}>Inventario actual</option>
+                {all.map((h, i) => i !== idx && <option key={h.source + h.at} value={i}>{fmt(h.at)}{h.source === "combined" ? " (combinada)" : ""}</option>)}
+              </select>
+            </label>
+            {losses[idx] >= 5 && all[idx + 1] && <Button size="sm" variant="outline" onClick={() => { setIdx(idx + 1); setTab("missing"); }}>Perdio {losses[idx]} objetos: ver la copia anterior</Button>}
+            {missing.length > 0 && <Button size="sm" disabled={busy} onClick={() => onRestore(missing, undefined, snap.items)}><RotateCcw />Devolver todo lo que falta ({missing.length})</Button>}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {([["missing", `Lo que falta (${missing.length})`], ["armor", `Armadura (${(snap?.items ?? []).filter(isArmor).length})`], ["all", `Copia completa (${snap?.items.length ?? 0})`], ["ender", `Cofre de Ender (${snap?.ender.length ?? 0})`], ["trash", `Papelera (${trash.length})`]] as const).map(([k, l]) => (
+          {([["missing", `${against >= 0 ? "Diferencias" : "Lo que falta"} (${missing.length})`], ["armor", `Armadura (${(snap?.items ?? []).filter(isArmor).length})`], ["all", `Copia completa (${snap?.items.length ?? 0})`], ["ender", `Cofre de Ender (${snap?.ender.length ?? 0})`], ["trash", `Papelera (${trash.length})`]] as const).map(([k, l]) => (
             <Button key={k} size="sm" variant={tab === k ? "default" : "outline"} onClick={() => setTab(k)}>{l}</Button>
           ))}
           <div className="ml-auto flex items-center gap-2">
@@ -263,8 +278,8 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
           </div>
           <div className="relative w-56"><Search className="pointer-events-none absolute left-2 top-2 size-4 text-muted-foreground" /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar objetos…" className="h-8 pl-8 text-xs" /></div>
         </div>
-        {tab === "missing" && current && missing.length === 0 && <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">El inventario actual ya tiene todo lo de esta copia.</p>}
-        {tab === "missing" && !current && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">Lee primero el inventario actual para calcular lo que falta.</p>}
+        {tab === "missing" && baseItems && missing.length === 0 && <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{against >= 0 ? "La otra copia ya tiene todo lo de esta." : "El inventario actual ya tiene todo lo de esta copia."}</p>}
+        {tab === "missing" && against < 0 && !current && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">Lee primero el inventario actual para calcular lo que falta.</p>}
         <div className="grid min-h-0 flex-1 auto-rows-min gap-2 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map(({ it, k }) => {
             const ench = Object.entries(it.enchants);
@@ -278,14 +293,14 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
                     <span className="line-clamp-2 font-medium leading-tight" title={it.spec}>{nameOf(it)}</span>
                     {it.count > 1 && <span className="font-mono text-sm text-muted-foreground">x{it.count}</span>}
                   </div>
-                  <p className="truncate font-mono text-[10px] text-muted-foreground">{it.id} · {slotLabel(it.slot)}</p>
+                  <p className="truncate font-mono text-[10px] text-muted-foreground">{it.id} · {slotLabel(it.slot)}{snap?.seen?.[it.spec] ? ` · visto ${fmt(snap.seen[it.spec])}` : ""}</p>
                   {ench.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{ench.map(([e, v]) => <Badge key={e} variant="outline" className="h-5 border-chart-5/40 px-1.5 text-[10px] text-chart-5"><Sparkles className="size-2.5" />{enchName(e, catalog, look)} {v}</Badge>)}</div>}
                 </div>
                 <Button size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={(e) => { e.stopPropagation(); onRestore([it], trashId ? [trashId] : undefined, dedupe); }}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"}</Button>
               </div>
             );
           })}
-          {shown.length === 0 && !(tab === "missing" && (missing.length === 0 || !current)) && <p className="col-span-full py-8 text-center text-sm text-muted-foreground">Nada que mostrar.</p>}
+          {shown.length === 0 && !(tab === "missing" && (missing.length === 0 || !baseItems)) && <p className="col-span-full py-8 text-center text-sm text-muted-foreground">Nada que mostrar.</p>}
         </div>
       </div>
     </div>

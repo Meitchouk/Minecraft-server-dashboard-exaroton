@@ -5,5 +5,7 @@ export async function register() {
     await schedule();
     const { startWatcher } = await import("@/lib/watcher");
     await startWatcher();
+    const { start } = await import("@/lib/ops");
+    start();
   }
 }

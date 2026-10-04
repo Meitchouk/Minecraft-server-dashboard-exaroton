@@ -13,7 +13,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { AdminBadge } from "@/components/admin-only";
 
 type Settings = { enabled: boolean; intervalMin: number; keepDays: number; enderChest: boolean };
-type Status = { running: boolean; lastRun: number | null; lastResult: string | null; nextRun: number | null; players: Record<string, number> };
+type Status = { running: boolean; lastRun: number | null; lastResult: string | null; nextRun: number | null; players: Record<string, number>; alerts?: { at: number; player: string; lost: number; units: number; names: string[] }[] };
 
 const ago = (t: number | null) => t ? `${Math.max(0, Math.round((Date.now() - t) / 60000))} min` : "—";
 const inMin = (t: number | null) => t ? `${Math.max(0, Math.round((t - Date.now()) / 60000))} min` : "—";
@@ -77,6 +77,14 @@ export function BackupsCard({ onRan }: { onRan?: () => void }) {
             {status.running && <span>Proxima: en {inMin(status.nextRun)}</span>}
             {status.lastResult && <span className="truncate">· {status.lastResult}</span>}
           </p>
+        )}
+        {(status?.alerts?.length ?? 0) > 0 && (
+          <div className="space-y-1 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
+            <p className="font-medium text-destructive">Perdidas masivas detectadas</p>
+            {status!.alerts!.slice(0, 5).map((a, i) => (
+              <p key={i} className="text-muted-foreground"><span className="font-mono">{new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> · <b className="text-foreground">{a.player}</b> perdio {a.lost} objetos ({a.units} u.): {a.names.slice(0, 3).join(", ")}…</p>
+            ))}
+          </div>
         )}
         <p className="text-[11px] text-muted-foreground">Nota: cada lectura imprime el inventario en la consola; si <code className="rounded bg-muted px-1">broadcast-console-to-ops</code> esta activo, los OPs veran ese texto en el chat. Puedes desactivarlo en Configuracion.</p>
       </CardContent>

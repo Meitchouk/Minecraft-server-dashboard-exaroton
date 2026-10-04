@@ -5,6 +5,7 @@ import path from "node:path";
 import { api, defaultServerId } from "@/lib/exaroton";
 import { type InvSlot } from "@/lib/snbt";
 import { db } from "@/lib/firebase";
+import { notifyAlert } from "@/lib/watcher";
 
 // Copias automaticas de inventarios: cada N minutos se lee el inventario y el cofre de Ender de todos los jugadores
 // conectados y se guarda en Firestore (servers/<id>/players/<jugador>/snapshots) o, si no esta configurado,
@@ -13,7 +14,8 @@ import { db } from "@/lib/firebase";
 
 export type BackupSettings = { enabled: boolean; intervalMin: number; keepDays: number; enderChest: boolean };
 export type BackupSnapshot = { at: number; player: string; items: InvSlot[]; ender: InvSlot[] };
-export type BackupStatus = { running: boolean; lastRun: number | null; lastResult: string | null; nextRun: number | null; players: Record<string, number> };
+export type BackupStatus = { running: boolean; lastRun: number | null; lastResult: string | null; nextRun: number | null; players: Record<string, number>; alerts?: LossAlert[] };
+export type LossAlert = { at: number; player: string; lost: number; units: number; names: string[] };
 
 const DATA = path.join(process.cwd(), "data");
 const SETTINGS_FILE = path.join(DATA, "backup.json");
@@ -108,6 +110,24 @@ async function appendSnapshot(serverId: string, snap: BackupSnapshot, keepDays: 
   return true;
 }
 
+// Deteccion de perdida masiva: si respecto a la copia anterior desaparecen muchos objetos de golpe (muerte sin keepInventory,
+// bug, robo...) se avisa por Discord y queda en el panel, para recuperar a tiempo desde la copia anterior.
+const LOSS_MIN_ITEMS = 8;
+async function checkLoss(serverId: string, snap: BackupSnapshot) {
+  const prev = (await listSnapshots(serverId, snap.player, 1))[0];
+  if (!prev) return;
+  const have = new Map<string, number>();
+  for (const i of snap.items) have.set(i.spec, (have.get(i.spec) ?? 0) + i.count);
+  const lost: InvSlot[] = [];
+  for (const i of prev.items) { const h = have.get(i.spec) ?? 0; const take = Math.min(i.count, h); have.set(i.spec, h - take); if (i.count - take > 0) lost.push({ ...i, count: i.count - take }); }
+  const units = lost.reduce((a, i) => a + i.count, 0);
+  if (lost.length < LOSS_MIN_ITEMS) return;
+  const names = lost.slice(0, 8).map((i) => `${i.id.replace(/^minecraft:/, "")} x${i.count}`);
+  (state.status.alerts ??= []).unshift({ at: snap.at, player: snap.player, lost: lost.length, units, names });
+  state.status.alerts = state.status.alerts.slice(0, 20);
+  await notifyAlert("📉 Perdida masiva de objetos", `**${snap.player}** perdio ${lost.length} objetos (${units} unidades) desde la copia anterior. Se pueden devolver desde Comandos → Inventario → Recuperar objetos.`, [{ name: "Ejemplos", value: names.join(", ").slice(0, 900) || "—" }], 0xff5555);
+}
+
 // Una pasada: lee y guarda el inventario de todos los jugadores conectados
 export async function runBackup(serverId = defaultServerId()): Promise<string> {
   if (state.busy) return "Ya hay una copia en curso";
@@ -123,7 +143,9 @@ export async function runBackup(serverId = defaultServerId()): Promise<string> {
       const items = await readEntityList(serverId, p, "Inventory");
       if (!items) continue;
       const ender = settings.enderChest ? (await readEntityList(serverId, p, "EnderItems")) ?? [] : [];
-      if (await appendSnapshot(serverId, { at: Date.now(), player: p, items, ender }, settings.keepDays)) saved++;
+      const snap = { at: Date.now(), player: p, items, ender };
+      await checkLoss(serverId, snap).catch(() => {});
+      if (await appendSnapshot(serverId, snap, settings.keepDays)) saved++;
       state.status.players[p] = Date.now();
     }
     return `${players.length} jugador(es) leidos, ${saved} copia(s) nueva(s)`;

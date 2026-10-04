@@ -239,6 +239,10 @@ export async function notifyLeave(player: string) {
 export async function notifyDeath(player: string, message: string) {
   await discordEmbed("deaths", { author: { name: "☠️ " + pick(FLAVOR.death), icon_url: avatar(player) }, title: message, color: C.red, thumbnail: { url: body(player) }, image: await gifOf("death") });
 }
+// Aviso generico al Discord (alertas del panel: perdida de objetos, TPS bajo, reinicios...). Usa el canal de estado del servidor.
+export async function notifyAlert(title: string, description: string, fields: { name: string; value: string; inline?: boolean }[] = [], color: number = C.gold) {
+  await discordEmbed("serverStatus", { title, description: description.slice(0, 3500), color, fields: fields.slice(0, 10) });
+}
 export async function notifyStatus(online: boolean, crashed = false) {
   const s = await settings();
   if (online) {

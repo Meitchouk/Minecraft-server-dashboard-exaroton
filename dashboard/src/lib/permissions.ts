@@ -18,10 +18,11 @@ export type Perm =
   | "players.bans"       // banear / desbanear
   | "command.dangerous"  // comandos de consola peligrosos (ver DANGEROUS)
   | "backup.settings"    // activar/desactivar copias, intervalo
+  | "ops.settings"       // reinicios programados y alertas de rendimiento
   | "app.admin";         // aprobar usuarios, roles, auditoria
 
-const ALL: Perm[] = ["server.start", "server.stop", "server.options", "config.write", "files.write", "players.ops", "players.bans", "command.dangerous", "backup.settings", "app.admin"];
-const PANEL_ONLY: Perm[] = ["app.admin", "backup.settings"];
+const ALL: Perm[] = ["server.start", "server.stop", "server.options", "config.write", "files.write", "players.ops", "players.bans", "command.dangerous", "backup.settings", "ops.settings", "app.admin"];
+const PANEL_ONLY: Perm[] = ["app.admin", "backup.settings", "ops.settings"];
 
 export function permissionsFor(role: Role, ownKey: boolean): Set<Perm> {
   if (role === "admin") return new Set(ALL);
@@ -39,6 +40,7 @@ export const PERM_LABEL: Record<Perm, string> = {
   "players.bans": "gestionar baneos",
   "command.dangerous": "ejecutar comandos peligrosos",
   "backup.settings": "cambiar los ajustes de copias",
+  "ops.settings": "cambiar reinicios programados y alertas",
   "app.admin": "administrar usuarios",
 };
 
