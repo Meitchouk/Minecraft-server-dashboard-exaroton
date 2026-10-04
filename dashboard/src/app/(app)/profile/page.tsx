@@ -1,5 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQueryState } from "@/hooks/use-query-state";
 import { UserRound, Clock, Skull, Swords, Footprints, Pickaxe, History, Backpack, ScrollText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,7 @@ export default function ProfilePage() {
   const { data: catalog } = useCatalog();
   const look = useMemo(() => lookupFor(modCat), [modCat]);
   const version = catalog?.version ?? "1.21";
-  const [pick, setPick] = useState<string>("");
+  const [pick, setPick] = useQueryState("player", "");
 
   const online = useMemo(() => server?.players.list ?? [], [server]);
   const names = useMemo(() => [...new Set([...online, ...(stats ?? []).map((s) => s.name)])].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })), [online, stats]);

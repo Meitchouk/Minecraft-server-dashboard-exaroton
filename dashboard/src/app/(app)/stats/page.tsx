@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useQueryNumber, useQueryState } from "@/hooks/use-query-state";
 import { BarChart3, Clock, Skull, Swords, Pickaxe, Footprints, Gem, RefreshCw, Users, LogIn, LogOut } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,11 +73,13 @@ function OnlineChart({ samples, hours, now }: { samples: Presence["samples"]; ho
 
 export default function StatsPage() {
   const { data: stats, loading, refresh } = usePoll(() => apiFetch<PlayerStats[]>("/api/stats"), 120000);
-  const [hours, setHours] = useState(24);
+  const [hours, setHours] = useQueryNumber("range", 24, { push: true });
   const { data: presence, loading: pLoading } = usePoll(() => apiFetch<Presence>(`/api/presence?hours=${hours}`), 60000, [hours]);
   const now = presence?.now ?? 0;
   const { data: catalog } = useCatalog();
-  const [sel, setSel] = useState<string | null>(null);
+  const [selQ, setSelQ] = useQueryState("player", "");
+  const sel = selQ || null;
+  const setSel = (v: string) => setSelQ(v);
   const nameOf = (id: string) => { const it = catalog?.items.find((i) => i.name === id); const en = catalog?.entities.find((e) => e.name === id); return it ? label(it) : en ? label(en) : id; };
 
   const totals = useMemo(() => ({ play: (stats ?? []).reduce((a, p) => a + p.playTimeMin, 0), deaths: (stats ?? []).reduce((a, p) => a + p.deaths, 0), mined: (stats ?? []).reduce((a, p) => a + p.minedTotal, 0) }), [stats]);

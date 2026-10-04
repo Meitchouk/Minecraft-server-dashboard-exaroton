@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useQueryState } from "@/hooks/use-query-state";
 import { History, Trash2, Undo2, Sparkles, RotateCcw, Archive, DatabaseBackup, Maximize2, Monitor, Search, Layers, CheckSquare, Square } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -68,7 +69,10 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
   onClearTrash: () => void;
 }) {
   const [snapIdx, setSnapIdx] = useState(0);
-  const [open, setOpen] = useState(false);
+  const [openQ, setOpenQ] = useQueryState("recover", "", { push: true });
+  const open = openQ === "1";
+  const setOpen = (v: boolean) => setOpenQ(v ? "1" : "");
+  const [rtab, setRtab] = useQueryState("rtab", "trash");
   // Combina lecturas locales (este navegador) y copias automaticas del servidor, de mas reciente a mas antigua
   // Agrupar: cada ventana de N minutos se une en una sola copia combinada (0 = ver cada copia por separado)
   const [win, setWin] = useState(0);
@@ -103,7 +107,7 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
         <CardDescription>Lo que se quita desde aqui va a la papelera; ademas cada lectura guarda una copia del inventario. Todo se regenera con sus encantamientos y componentes exactos.</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="trash">
+        <Tabs value={rtab} onValueChange={(v) => setRtab(String(v))}>
           <TabsList className="w-full">
             <TabsTrigger value="trash" className="flex-1 gap-1.5"><Trash2 className="size-3.5" />Papelera {trash.length > 0 && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trash.length}</Badge>}</TabsTrigger>
             <TabsTrigger value="history" className="flex-1 gap-1.5"><History className="size-3.5" />Historial {all.length > 0 && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{all.length}</Badge>}</TabsTrigger>
@@ -189,7 +193,9 @@ function FullView({ all, idx, setIdx, win, setWin, current, trash, nameOf, busy,
   nameOf: (i: InvSlot) => string; busy: boolean; onRestore: (items: InvSlot[], trashIds?: string[], snapshot?: InvSlot[]) => void;
   version: string; catalog: Catalog | null; look: Lookup;
 }) {
-  const [tab, setTab] = useState<"missing" | "armor" | "all" | "ender" | "trash">("missing");
+  const [tabQ, setTabQ] = useQueryState("rview", "missing");
+  const tab = (["missing", "armor", "all", "ender", "trash"].includes(tabQ) ? tabQ : "missing") as "missing" | "armor" | "all" | "ender" | "trash";
+  const setTab = (t: typeof tab) => setTabQ(t);
   // la seleccion es valida solo para la pestaña y copia donde se hizo
   const ctx = `${tab}:${all[idx]?.at ?? 0}`;
   const [selState, setSelState] = useState<{ ctx: string; set: Set<number> }>({ ctx: "", set: new Set() });

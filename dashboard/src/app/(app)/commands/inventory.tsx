@@ -26,6 +26,7 @@ import { useModCatalog } from "@/hooks/use-mod-catalog";
 import { ItemIcon, enchName, lookupFor, slotLabel, type Lookup } from "./item-visuals";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useQueryState } from "@/hooks/use-query-state";
 
 // Slots del inventario vanilla: 0-8 hotbar, 9-35 principal, 100-103 armadura (pies..cabeza), -106 mano secundaria
 const ARMOR: { slot: number; label: string }[] = [
@@ -46,7 +47,8 @@ async function readInventory(player: string, before: string[] = []): Promise<Inv
 
 export function InventoryCommand({ catalog, players }: { catalog: Catalog | null; players: string[] }) {
   const { online, running } = useCommands();
-  const [player, setPlayer] = useState(players[0] ?? "");
+  const [playerQ, setPlayer] = useQueryState("player", "");
+  const player = playerQ || (players[0] ?? "");
   const [inv, setInv] = useState<InvSlot[] | null>(null);
   const [loadedFor, setLoadedFor] = useState("");
   const [reading, setReading] = useState(false);

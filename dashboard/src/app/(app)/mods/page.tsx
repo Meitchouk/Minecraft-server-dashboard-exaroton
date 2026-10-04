@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useQueryText } from "@/hooks/use-query-state";
 import { Puzzle, Search, Power, PowerOff, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,7 @@ const baseOf = (n: string) => n.replace(/\.jar$/i, "").toLowerCase().replace(/[-
 
 export default function ModsPage() {
   const { data, loading, refresh } = usePoll(() => apiFetch<Data>("/api/mods"), 0);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useQueryText("q");
   const [busy, setBusy] = useState<string | null>(null);
   const perms = usePermissions();
   const can = perms.can("files.write");

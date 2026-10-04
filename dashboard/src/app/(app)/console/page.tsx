@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryText } from "@/hooks/use-query-state";
 import { RefreshCw, Send, Share2, ArrowDownToLine, Pause, Play, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -32,7 +33,7 @@ function lineClass(l: string) {
 export default function ConsolePage() {
   const { data: server } = useServer(5000);
   const [paused, setPaused] = useState(false);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useQueryText("q");
   const [cmd, setCmd] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [hIdx, setHIdx] = useState(-1);

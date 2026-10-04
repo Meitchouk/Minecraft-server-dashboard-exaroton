@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useQueryText } from "@/hooks/use-query-state";
 import { Save, RotateCcw, Search, AlertTriangle, Shield, Gamepad2, Globe2, Gauge, Package2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,7 +83,7 @@ export default function ConfigPage() {
   const initial = useMemo(() => Object.fromEntries((options ?? []).map((o) => [o.key, o.value])), [options]);
   const [draftState, setDraft] = useDraft<Record<string, unknown>>(initial, key);
   const draft = useMemo(() => draftState ?? {}, [draftState]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useQueryText("q");
   const [saving, setSaving] = useState(false);
   const perms = usePermissions();
   const canWrite = perms.can("config.write");

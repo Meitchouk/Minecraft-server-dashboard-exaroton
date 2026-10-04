@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useQueryState } from "@/hooks/use-query-state";
 import { Folder, FileText, File as FileIcon, ChevronRight, Home, Save, Trash2, RefreshCw, FolderPlus, Upload, Download, Settings2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -33,7 +34,7 @@ const norm = (p: string) => ("/" + p.replace(/^\/+/, "")).replace(/\/+/g, "/");
 const parent = (p: string) => { const s = norm(p).split("/").filter(Boolean); s.pop(); return "/" + s.join("/"); };
 
 export default function FilesPage() {
-  const [path, setPath] = useState("/");
+  const [path, setPath] = useQueryState("path", "/", { push: true });
   const [saving, setSaving] = useState(false);
   const [newName, setNewName] = useState("");
   const perms = usePermissions();

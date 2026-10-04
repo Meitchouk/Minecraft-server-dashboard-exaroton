@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useQueryState } from "@/hooks/use-query-state";
 import { Zap, Gift, Puzzle, FlaskConical, PawPrint, Star, MapPin, Backpack, Sparkles, PackagePlus, History, Trash2, CheckCircle2, XCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +48,7 @@ function HistoryPanel() {
 export default function CommandsPage() {
   const { data: server } = useServer(5000);
   const { data: catalog, loading: catLoading } = useCatalog();
-  const [tab, setTab] = useState("quick");
+  const [tab, setTab] = useQueryState("tab", "quick", { push: true });
   const players = server?.players.list ?? [];
   const online = server?.status === 1;
 

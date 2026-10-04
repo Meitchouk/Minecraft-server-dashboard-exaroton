@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useQueryState } from "@/hooks/use-query-state";
 import { UserPlus, X, ShieldCheck, ListChecks, Ban, Network, Users, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,7 +94,8 @@ function PlayerList({ list, online }: { list: string; online: string[] }) {
 export default function PlayersPage() {
   const { data: server } = useServer(5000);
   const online = server?.players.list ?? [];
-  const [tab, setTab] = useState("whitelist");
+  const [tabQ, setTab] = useQueryState("tab", "whitelist", { push: true });
+  const tab = LISTS.some((l) => l.id === tabQ) ? tabQ : "whitelist";
   const permsTop = usePermissions();
   const current = LISTS.find((l) => l.id === tab)!;
 
