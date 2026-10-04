@@ -43,7 +43,7 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
   trash: TrashEntry[];
   nameOf: (i: InvSlot) => string;
   busy: boolean;
-  onRestore: (items: InvSlot[], trashIds?: string[]) => void;
+  onRestore: (items: InvSlot[], trashIds?: string[], snapshot?: InvSlot[]) => void;
   onDropTrash: (ids: string[]) => void;
   onClearTrash: () => void;
 }) {
@@ -123,9 +123,9 @@ export function RecoveryCard({ version, catalog, look, player, current, history,
                         <div className="space-y-1.5 rounded-md border border-chart-3/40 bg-chart-3/10 p-2">
                           <p className="text-xs font-medium text-chart-3">Falta respecto a esta lectura ({missing.length}):</p>
                           <ul className="max-h-40 space-y-1 overflow-auto pr-1">
-                            {missing.map((it, i) => <ItemRow key={i} it={it} nameOf={nameOf} disabled={busy} action={() => onRestore([it])} />)}
+                            {missing.map((it, i) => <ItemRow key={i} it={it} nameOf={nameOf} disabled={busy} action={() => onRestore([it], undefined, snap.items)} />)}
                           </ul>
-                          <Button size="sm" className="w-full" disabled={busy} onClick={() => onRestore(missing)}><RotateCcw />Devolver todo lo que falta</Button>
+                          <Button size="sm" className="w-full" disabled={busy} onClick={() => onRestore(missing, undefined, snap.items)}><RotateCcw />Devolver todo lo que falta</Button>
                         </div>
                       )
                     )}
@@ -159,7 +159,7 @@ type Snap = { at: number; items: InvSlot[]; ender: InvSlot[]; source: "local" | 
 // Vista a pantalla completa: linea de tiempo de copias + objetos grandes con icono y encantamientos
 function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, version, catalog, look }: {
   all: Snap[]; idx: number; setIdx: (i: number) => void; current: InvSlot[] | null; trash: TrashEntry[];
-  nameOf: (i: InvSlot) => string; busy: boolean; onRestore: (items: InvSlot[], trashIds?: string[]) => void;
+  nameOf: (i: InvSlot) => string; busy: boolean; onRestore: (items: InvSlot[], trashIds?: string[], snapshot?: InvSlot[]) => void;
   version: string; catalog: Catalog | null; look: Lookup;
 }) {
   const [tab, setTab] = useState<"missing" | "all" | "ender" | "trash">("missing");
@@ -209,7 +209,7 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
             <span className="font-medium">{fmt(snap.at)}</span>
             <Badge variant="secondary">{snap.source === "server" ? "copia automatica" : "lectura del panel"}</Badge>
             <span className="text-muted-foreground">{snap.items.length} objetos · {snap.items.reduce((a, i) => a + i.count, 0)} unidades{snap.ender.length > 0 && ` · Ender: ${snap.ender.length}`}</span>
-            {missing.length > 0 && <Button size="sm" className="ml-auto" disabled={busy} onClick={() => onRestore(missing)}><RotateCcw />Devolver todo lo que falta ({missing.length})</Button>}
+            {missing.length > 0 && <Button size="sm" className="ml-auto" disabled={busy} onClick={() => onRestore(missing, undefined, snap.items)}><RotateCcw />Devolver todo lo que falta ({missing.length})</Button>}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -235,7 +235,7 @@ function FullView({ all, idx, setIdx, current, trash, nameOf, busy, onRestore, v
                   <p className="truncate font-mono text-[10px] text-muted-foreground">{it.id} · {slotLabel(it.slot)}</p>
                   {ench.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{ench.map(([e, v]) => <Badge key={e} variant="outline" className="h-5 border-chart-5/40 px-1.5 text-[10px] text-chart-5"><Sparkles className="size-2.5" />{enchName(e, catalog, look)} {v}</Badge>)}</div>}
                 </div>
-                <Button size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={() => onRestore([it], trashId ? [trashId] : undefined)}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"}</Button>
+                <Button size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={() => onRestore([it], trashId ? [trashId] : undefined, tab === "missing" ? snap?.items : undefined)}><Undo2 />{tab === "ender" ? "Dar" : "Devolver"}</Button>
               </div>
             );
           })}

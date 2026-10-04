@@ -20,7 +20,7 @@ import { type InvSlot } from "@/lib/snbt";
 import { buildGive, recommendedFor } from "./give";
 import { RecoveryCard } from "./recovery";
 import { BackupsCard } from "./backups";
-import { giveCmd, pushSnapshot, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
+import { giveCmd, missingFrom, pushSnapshot, type Snapshot, type TrashEntry } from "@/lib/inventory-store";
 import { useStore } from "@/hooks/use-store";
 import { useModCatalog } from "@/hooks/use-mod-catalog";
 import { ItemIcon, enchName, lookupFor, slotLabel, type Lookup } from "./item-visuals";
@@ -139,9 +139,47 @@ export function InventoryCommand({ catalog, players }: { catalog: Catalog | null
     if (inv?.length) await Promise.all(inv.map((item) => trashStore.put({ player: loadedFor, reason: "Vaciar todo", item })));
     return act([`clear ${loadedFor}`], "Inventario vaciado → papelera");
   };
-  const restore = async (items: InvSlot[], trashIds?: string[]) => {
-    await act(items.map((it) => giveCmd(loadedFor, it)), `${items.length} objeto(s) devuelto(s) a ${loadedFor}`);
-    if (trashIds?.length) await trashStore.removeMany(trashIds);
+  // Devolver con comprobacion real: se lee el inventario ANTES (y, si viene de una copia, se recalcula lo que falta
+  // contra el inventario real, no contra la ultima lectura), se envian las ordenes y se relee DESPUES para
+  // comprobar objeto a objeto que llegaron. Solo se da por devuelto (y se saca de la papelera) lo verificado.
+  const restore = async (items: InvSlot[], trashIds?: string[], snapshot?: InvSlot[]) => {
+    if (!online) return toast.error("El servidor debe estar en linea");
+    setReading(true);
+    const before = await readInventory(loadedFor).catch(() => null);
+    if (!before) { setReading(false); return toast.error("No se pudo leer el inventario; no se devolvio nada"); }
+    let toGive = items;
+    if (snapshot) {
+      const still = missingFrom(snapshot, before);
+      const want = new Map<string, number>();
+      for (const i of items) want.set(i.spec, (want.get(i.spec) ?? 0) + i.count);
+      toGive = [];
+      for (const i of still) {
+        const w = want.get(i.spec) ?? 0;
+        const c = Math.min(w, i.count);
+        if (c > 0) { toGive.push({ ...i, count: c }); want.set(i.spec, w - c); }
+      }
+      if (!toGive.length) { setReading(false); setInv(before); setHistory(pushSnapshot(loadedFor, before)); return toast.info("El jugador ya tiene todo lo que pedias"); }
+    }
+    const count = (l: InvSlot[], spec: string) => l.filter((x) => x.spec === spec).reduce((a, x) => a + x.count, 0);
+    const need = new Map<string, number>();
+    for (const i of toGive) need.set(i.spec, (need.get(i.spec) ?? 0) + i.count);
+    const cmds = toGive.map((it) => giveCmd(loadedFor, it));
+    let after = await readInventory(loadedFor, cmds).catch(() => null);
+    // un reintento de lectura por si la consola aun no habia aplicado los give
+    const arrived = (a: InvSlot[]) => toGive.filter((it) => (count(a, it.spec) - count(before, it.spec)) >= (need.get(it.spec) ?? 0));
+    if (after && arrived(after).length < toGive.length) { await new Promise((r) => setTimeout(r, 1500)); after = (await readInventory(loadedFor).catch(() => null)) ?? after; }
+    setReading(false);
+    if (!after) return toast.error("Se enviaron las ordenes pero no se pudo comprobar el inventario", { description: "No se marco nada como devuelto. Pulsa Leer y revisa." });
+    setInv(after); setHistory(pushSnapshot(loadedFor, after));
+    const ok = arrived(after);
+    const okSpecs = new Set(ok.map((i) => i.spec));
+    const failed = toGive.filter((i) => !okSpecs.has(i.spec));
+    if (trashIds?.length) {
+      const okIds = trashIds.filter((id) => { const t = trash.find((x) => x.id === id); return !t || okSpecs.has(t.item.spec); });
+      if (okIds.length) await trashStore.removeMany(okIds);
+    }
+    if (!failed.length) toast.success(`${toGive.length} objeto(s) devuelto(s) y verificados en el inventario de ${loadedFor}`);
+    else toast.warning(`Llegaron ${ok.length} de ${toGive.length} objetos`, { description: `No aparecen en el inventario: ${failed.map((i) => `${nameOf(i)} x${i.count}`).join(", ")}. ¿Inventario lleno o jugador desconectado? Vuelve a intentarlo.` });
   };
 
   const results = useMemo(() => {
